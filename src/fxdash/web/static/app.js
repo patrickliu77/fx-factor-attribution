@@ -5,9 +5,9 @@
 // The "share" in News and Attribution is not a causal measure; it is an explicitly
 // stated allocation rule (see the top of web/newsfeed.py). Page copy must follow
 // that definition and never phrase it as "caused".
-import { t, getLang, setLang } from "/i18n.js";
-import * as CH from "/charts.js";
-import { methodologyHtml } from "/methodology.js";
+import { t, getLang, setLang } from "./i18n.js";
+import * as CH from "./charts.js";
+import { methodologyHtml } from "./methodology.js";
 
 /* global echarts */
 
@@ -39,10 +39,66 @@ const charts = new Map();
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Static build or live server. A static build (fxdash.web.build) ships build.json
+// next to index.html and every API response as a file under api/; the live server
+// has neither. Detected once at start-up, so one source serves both. All URLs in
+// this file are relative for the same reason: the live server sits at the root,
+// the published site sits under a project path.
+const build = { mode: "live", info: null };
+async function detectBuild() {
+  try {
+    const res = await fetch("build.json", { cache: "no-store" });
+    if (res.ok) { build.info = await res.json(); build.mode = "static"; }
+  } catch (e) { /* no build.json: live server */ }
+}
+// File name for one API request in a static build: drop the leading slash, append
+// the query parameters sorted by key as ".key-value", then ".json". The same rule
+// is implemented in web/build.py; static hosting ignores query strings, so the
+// parameters have to live in the name.
+function staticPath(path) {
+  const [p, qs] = path.split("?");
+  const params = qs
+    ? qs.split("&").map((kv) => kv.split("=")).sort((a, b) => a[0].localeCompare(b[0]))
+    : [];
+  return "api" + p + params.map(([k, v]) => `.${k}-${v}`).join("") + ".json";
+}
 async function api(path) {
-  const res = await fetch("/api" + path, { headers: { accept: "application/json" } });
+  const url = build.mode === "static" ? staticPath(path) : "api" + path;
+  const res = await fetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(res.status + " " + path);
   return res.json();
+}
+
+// Ages are computed here, in the browser, from timestamps, never read from a file.
+// A number computed at write time freezes the moment its writer dies, which is
+// exactly the failure a heartbeat exists to catch. Pipeline stamps are naive local
+// time on the machine that runs the pipeline; that machine also builds the page, so
+// build.json carries its UTC offset and naive stamps are read in it. On the live
+// server the browser is on the same machine, so its own zone is the right one.
+const OFFSET_RE = /(Z|[+-]\d\d:?\d\d)$/;
+function parseStamp(text) {
+  if (!text) return null;
+  let s = String(text).trim().replace(" ", "T").replace(/(\.\d{3})\d+/, "$1");
+  if (!OFFSET_RE.test(s) && build.mode === "static" && build.info && build.info.tz_offset) {
+    s += build.info.tz_offset;
+  }
+  const ms = Date.parse(s);
+  return Number.isNaN(ms) ? null : ms;
+}
+const ageHours = (text) => {
+  const ms = parseStamp(text);
+  return ms == null ? null : (Date.now() - ms) / 3.6e6;
+};
+const stateOf = (age, warn, crit) =>
+  age == null ? "red" : age > crit ? "red" : age > warn ? "yellow" : "green";
+const HEARTBEAT_DEFAULTS = { warn: 26, crit: 72 };
+// "2026-09-04T20:45:03-05:00" -> "2026-09-04 20:45 UTC-05:00"; shown in the stamp's
+// own zone rather than converted, so two readers in two zones see the same text
+function stampLabel(text) {
+  const m = /^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d)(?::\d\d)?(?:\.\d+)?(Z|[+-]\d\d:\d\d)?$/
+    .exec(String(text || "").trim());
+  if (!m) return text || "";
+  return `${m[1]} ${m[2]}${m[3] ? " UTC" + (m[3] === "Z" ? "" : m[3]) : ""}`;
 }
 const label = (p) => PAIR_LABEL[p] || p;
 const fmtLevel = (v, d) => v == null ? "n/a"
@@ -127,17 +183,23 @@ async function renderTape() {
 }
 
 /* ------------------------------------------------------------------ pulse */
-// Always in the header. The narrative layer dying silently for three days with no
-// visible sign on the page is the most dangerous failure mode of an unattended system.
-// The age is recomputed by the server **at read time**, not taken from the stale
-// write-time value in the output file.
-// Color is judged on last_run only (did it run). last_published (was a commentary
-// written) is decided by the market; five quiet days are a normal state, and judging
-// color on it would mean alarming every day.
+// Two chips live permanently in the header and nowhere else (2026-09-04 ruling):
+// NARRATIVE, the narrative layer's heartbeat, and in a static build BUILT, the
+// heartbeat of the publish step. The narrative layer dying silently for three days
+// with no visible sign on the page is the most dangerous failure mode of an
+// unattended system; a published page that quietly stopped being rebuilt is the
+// same failure one layer up, so it gets its own chip. The full three-heartbeat
+// panel is on the News page.
+// Ages are computed in the browser from the timestamps (see parseStamp). Colour is
+// judged on last_run only (did it run). last_published (was a commentary written)
+// is decided by the market; five quiet days are a normal state, and judging colour
+// on it would mean alarming every day.
 async function renderPulse() {
   const el = document.getElementById("pulse");
-  let s;
-  try { s = await api("/narrative/status"); } catch (e) { s = null; }
+  let s = state.pulse;
+  if (build.mode === "live" || !s) {
+    try { s = await api("/narrative/status"); } catch (e) { s = null; }
+  }
   if (!s) {
     el.dataset.state = "red";
     el.innerHTML = `<i></i>${esc(t("pulse.label"))} ${esc(t("pulse.unreachable"))}`;
@@ -146,39 +208,77 @@ async function renderPulse() {
     state.pulse = null;
     return;
   }
-  state.pulse = s;
-  el.dataset.state = s.state;
-  el.innerHTML = `<i></i>${esc(t("pulse.label"))} ${esc(pulseAge(s))}`;
+  const warn = s.warn_hours || HEARTBEAT_DEFAULTS.warn;
+  const crit = s.crit_hours || HEARTBEAT_DEFAULTS.crit;
+  const age = ageHours(s.last_run);
+  state.pulse = { ...s, age_hours: age, state: stateOf(age, warn, crit) };
+  el.dataset.state = state.pulse.state;
+  el.innerHTML = `<i></i>${esc(t("pulse.label"))} ${esc(ageText(age))}`;
   el.title = (s.reasons || []).join("; ") || t("pulse.ok");
   el.hidden = false;
 }
 
-function pulseAge(s) {
-  if (s.age_hours == null) return t("pulse.never");
-  const h = s.age_hours;
+// BUILT: when this page was generated. Static builds only; the live server has no
+// build step and the chip stays hidden.
+function renderBuilt() {
+  const el = document.getElementById("built");
+  if (!el) return;
+  if (build.mode !== "static" || !build.info) { el.hidden = true; return; }
+  const age = ageHours(build.info.built_at);
+  const warn = (state.pulse && state.pulse.warn_hours) || HEARTBEAT_DEFAULTS.warn;
+  const crit = (state.pulse && state.pulse.crit_hours) || HEARTBEAT_DEFAULTS.crit;
+  el.dataset.state = stateOf(age, warn, crit);
+  el.innerHTML = `<i></i>${esc(t("pulse.build.label"))} ${esc(ageText(age))}`;
+  el.title = t("pulse.build.tip", { at: stampLabel(build.info.built_at) });
+  el.hidden = false;
+}
+
+function ageText(h) {
+  if (h == null) return t("pulse.never");
   return h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h`
     : `${Math.round(h / 24)}d`;
 }
 
+// The three heartbeats, one row each, none a substitute for another: if the
+// pipeline or the narrative layer dies, the page keeps being rebuilt on schedule
+// and the third row stays green; if the build dies, the first two keep looking
+// fresh on a page nobody is refreshing. Every age is computed in the browser.
 function healthPanel() {
   const s = state.pulse;
-  if (!s) return "";
+  const p = state.pipeline || {};
+  const warn = (s && s.warn_hours) || HEARTBEAT_DEFAULTS.warn;
+  const crit = (s && s.crit_hours) || HEARTBEAT_DEFAULTS.crit;
+  const dot = (st) => `<i style="background:var(--${
+    st === "green" ? "up" : st === "yellow" ? "res" : st === "red" ? "down" : "mute"})"></i>`;
+  const stampText = (v) => v ? stampLabel(v) : t("pulse.never");
+  const row = (label, stamp, note) => {
+    const age = ageHours(stamp);
+    return `<div class="health__row">${dot(stateOf(age, warn, crit))}
+      ${esc(label)} <b>${esc(stampText(stamp))}</b>
+      <span>${esc(t("pulse.age"))} ${esc(ageText(age))}</span>
+      ${note ? `<span>${esc(note)}</span>` : ""}
+    </div>`;
+  };
+  const buildRow = build.mode === "static" && build.info
+    ? row(t("pulse.build"), build.info.built_at, t("pulse.build.note"))
+    : `<div class="health__row">${dot("none")} ${esc(t("pulse.build"))}
+        <span>${esc(t("pulse.build.live"))}</span></div>`;
   return `<div class="health">
-    <div class="health__row"><i style="background:var(--${
-      s.state === "green" ? "up" : s.state === "yellow" ? "res" : "down"})"></i>
-      ${esc(t("pulse.label"))}
-      <b>${esc(s.last_run ? s.last_run.replace("T", " ") : t("pulse.never"))}</b>
-      <span>${esc(t("pulse.age"))} ${esc(pulseAge(s))}</span>
-      <span>${esc(t("pulse.thresholds", { warn: s.warn_hours, crit: s.crit_hours }))}</span>
-      <span>${s.days_on_record} ${esc(t("pulse.days"))}</span>
-    </div>
-    <div class="health__row health__row--quiet">
+    ${row(t("pulse.pipeline"), p.last_live_success,
+      p.reasons && p.reasons.length ? p.reasons.join("; ") : "")}
+    ${s ? row(t("pulse.label"), s.last_run,
+      `${t("pulse.thresholds", { warn, crit })}, ${s.days_on_record} ${t("pulse.days")}`)
+      : `<div class="health__row">${dot("red")} ${esc(t("pulse.label"))}
+          <span>${esc(t("pulse.unreachable"))}</span></div>`}
+    ${buildRow}
+    ${s ? `<div class="health__row health__row--quiet">
       ${esc(t("pulse.published"))}
       <b>${esc(s.last_published ? s.last_published.slice(0, 10) : t("pulse.nonepub"))}</b>
       <span>${esc(t("pulse.pubnote"))}</span>
-    </div>
-    ${(s.reasons || []).length
+    </div>` : ""}
+    ${s && (s.reasons || []).length
       ? `<div class="health__row">${s.reasons.map(esc).join("; ")}</div>` : ""}
+    <div class="health__row health__row--quiet">${esc(t("pulse.three"))}</div>
   </div>`;
 }
 
@@ -217,6 +317,16 @@ function renderNav(route) {
     b.onclick = () => { setLang(b.dataset.lang); renderThemeButton(); render(); };
   });
   renderThemeButton();
+}
+
+// Permanent footer, plain text and no dialog (2026-09-04 ruling): research
+// project, not advice, model-written prose can be wrong, updated once an evening,
+// sources on the methodology page. Re-rendered with the language.
+function renderFooter() {
+  const el = document.getElementById("foot");
+  if (!el) return;
+  el.innerHTML = `<p>${esc(t("foot.body"))} <a href="#/methodology">${
+    esc(t("foot.methodology"))}</a></p>`;
 }
 
 function controls() {
@@ -388,7 +498,15 @@ function headlineExpandHtml(h, key) {
 }
 
 async function pageNews(view) {
-  const news = await api("/news");
+  // The pipeline heartbeat for the health panel rides on the same overview request
+  // the FX page makes (canonical window and model), so a static build has the file
+  const win = (state.meta && state.meta.default_window) || 126;
+  const model = (state.meta && state.meta.default_model) || "ols";
+  const [news, overview] = await Promise.all([
+    api("/news"),
+    api(`/overview?window=${win}&model=${model}`).catch(() => null),
+  ]);
+  state.pipeline = overview ? overview.status_digest : null;
   const pairs = (state.meta.pairs || []).slice()
     .sort((a, b) => PAIR_ORDER.indexOf(a) - PAIR_ORDER.indexOf(b));
   const stories = news.week.items;
@@ -446,7 +564,11 @@ async function pageNews(view) {
       published: (st.latest || {}).date || st.published, pairs: st.pairs,
     })),
   ];
-  const isLive = news.today.mode === "live";
+  // Headlines are a snapshot taken at fetched_at, whether the server fetched them
+  // under its TTL or the build did it once in the evening; the page says when
+  // rather than calling them live (2026-09-04 ruling, honest downgrade)
+  const isFetched = news.today.mode === "fetched";
+  const fetchedAt = news.today.fetched_at ? stampLabel(news.today.fetched_at) : "";
   const headlineRow = (h, key) => {
     const open = state.openHeadline === key;
     const chips = (h.pairs || []).map((p) =>
@@ -463,7 +585,7 @@ async function pageNews(view) {
   // The empty state distinguishes the cause: the feeds could not be read; they
   // were read but nothing carries today's date; or nothing was fetched at all
   const emptyMsg = (news.today.errors || []).length ? t("news.feedfail")
-    : isLive ? t("news.notodayyet") : t("news.empty");
+    : isFetched ? t("news.notodayyet") : t("news.empty");
   const headRows = heads.length
     ? heads.map((h, i) => headlineRow(h, "h:" + i)).join("")
     : `<p class="empty">${esc(emptyMsg)}</p>`;
@@ -481,7 +603,8 @@ async function pageNews(view) {
 
   const todayHint = [news.today.date, `${heads.length} ${t("news.items")}`]
     .filter(Boolean).join(", ");
-  const liveChip = isLive ? `<span class="tag tag--live">${esc(t("news.live"))}</span>` : "";
+  const todayTitle = isFetched && fetchedAt
+    ? t("news.today.title", { time: fetchedAt }) : t("news.today.plain");
 
   view.innerHTML = `
     <div class="headrow"><div class="dateline">${esc(longDate(news.as_of))}</div></div>
@@ -500,17 +623,17 @@ async function pageNews(view) {
             ${storyRows}
           </div>
           ${earlier.length ? `<div class="col gap14" style="margin-top:16px">
-            <div class="between"><h2 class="sec">${esc(t("news.earlier"))} ${liveChip}</h2>
+            <div class="between"><h2 class="sec">${esc(t("news.earlier"))}</h2>
               <div class="hint">${esc(news.earlier.start)}, ${earlier.length} ${esc(t("news.items"))}</div></div>
             <div class="col">${earlierRows}</div>
             <p class="stack-note">${esc(t("news.earliernote"))}</p>
           </div>` : ""}
         </div>
         <div class="col gap14">
-          <div class="between"><h2 class="sec">${esc(t("news.today.title"))} ${liveChip}</h2>
+          <div class="between"><h2 class="sec">${esc(todayTitle)}</h2>
             <div class="hint">${esc(todayHint)}</div></div>
           <div class="col">${headRows}</div>
-          ${isLive ? `<p class="stack-note">${esc(t("news.livenote"))}</p>` : ""}
+          ${isFetched ? `<p class="stack-note">${esc(t("news.fetchednote"))}</p>` : ""}
           ${opinions.length ? `
           <button class="opfold" type="button" id="opfold" aria-expanded="${state.opinionsOpen}">
             <i>${state.opinionsOpen ? "\u25be" : "\u25b8"}</i>
@@ -741,7 +864,8 @@ function pairNewsHtml(pair, feed) {
   const todayBlock = headlines.length ? `
     <div class="pairnews__today">
       <div class="between"><h3 class="side">${esc(t("news.recent"))}</h3>
-        <span class="tag tag--live">${esc(t("news.live"))}</span></div>
+        ${feed.headlines_fetched_at ? `<span class="tag">${esc(t("news.fetchedat",
+          { time: stampLabel(feed.headlines_fetched_at) }))}</span>` : ""}</div>
       ${headlines.map((h) => `<a class="headline" href="${esc(h.url)}"
           target="_blank" rel="noopener">
         <span class="when">${esc(h.published || "")}</span>
@@ -1065,7 +1189,7 @@ function ensureMathJax() {
     };
     mathjaxLoading = new Promise((resolve, reject) => {
       const sc = document.createElement("script");
-      sc.src = "/vendor/tex-svg.js";
+      sc.src = "vendor/tex-svg.js";
       sc.onload = resolve;
       sc.onerror = reject;
       document.head.appendChild(sc);
@@ -1092,6 +1216,7 @@ async function render() {
   const route = (location.hash || "#/fx").slice(1);
   disposeCharts();
   renderNav(route);
+  renderFooter();
   view.innerHTML = `<p class="empty">${esc(t("loading"))}</p>`;
   try {
     if (!state.meta) state.meta = await api("/meta");
@@ -1118,10 +1243,18 @@ window.addEventListener("resize", () => {
 window.addEventListener("hashchange", render);
 
 (async function start() {
+  await detectBuild();
   setLang(getLang());
   applyTheme(getTheme());
   await renderTape();
   await renderPulse();
+  renderBuilt();
   await render();
-  setInterval(() => { renderTape(); renderPulse(); }, 5 * 60 * 1000);
+  // Every five minutes: the live server may have new quotes and a new heartbeat
+  // file; a static build has neither, so only the ages are recomputed there
+  setInterval(() => {
+    if (build.mode === "live") renderTape();
+    renderPulse();
+    renderBuilt();
+  }, 5 * 60 * 1000);
 })();

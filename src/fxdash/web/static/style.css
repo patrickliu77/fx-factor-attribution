@@ -289,7 +289,6 @@ a { color: inherit; text-decoration: none; }
 .opfold i { font-style: normal; }
 
 /* ---------------------------------------------------------- live headlines */
-.tag--live { color: var(--res); border-color: var(--res); }
 .hchips .ptag { margin-left: 6px; }
 .pairnews__today {
   border-top: 1px solid var(--line); padding-top: 14px; margin-top: 4px;
@@ -339,6 +338,15 @@ a.headline .src { font-family: var(--mono); font-size: 11.5px; color: var(--mute
 
 /* ---------------------------------------------------------------- page body */
 main { padding: 40px var(--gut) 64px; max-width: var(--page); margin: 0 auto; }
+
+/* Permanent footer disclaimer: plain text, no dialog (2026-09-04 ruling). */
+.foot {
+  max-width: var(--page); margin: 0 auto; padding: 24px var(--gut) 40px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px; line-height: 1.6; color: var(--mute);
+}
+.foot p { margin: 0; max-width: 78ch; }
+.foot a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
 .dateline { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .headrow {
   display: flex; align-items: center; justify-content: space-between;

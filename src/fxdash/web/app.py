@@ -391,9 +391,12 @@ def create_app(output_dir: Path | None = None,
                 fallback = {"date": flagged[-1].get("date"),
                             "items": NF.cited_stories(flagged)}
 
-        # today's headlines are read live: the commentary trigger gate governs
-        # the LLM spend, it should not also switch off "what is in the news
-        # today". On fetch failure fall back to the sources in the artifacts,
+        # today's headlines are fetched at request time under a TTL: the
+        # commentary trigger gate governs the LLM spend, it should not also
+        # switch off "what is in the news today". The response is a snapshot
+        # taken at fetched_at, and the page says so instead of calling it live;
+        # a static build takes that snapshot once in the evening (2026-09-04
+        # ruling). On fetch failure fall back to the sources in the artifacts,
         # then to an honest empty state.
         #
         # "Today" holds only wall-clock-today stories; earlier ones in this
@@ -426,7 +429,7 @@ def create_app(output_dir: Path | None = None,
 
         if todays or earlier_items:
             today = {
-                "mode": "live",
+                "mode": "fetched",
                 "date": wall_today,
                 "fetched_at": live["fetched_at"],
                 "items": todays,
@@ -461,6 +464,7 @@ def create_app(output_dir: Path | None = None,
             raise HTTPException(404, detail=f"unknown pair: {pair}")
         feed = NF.pair_evidence(_recent_flagged(), pair)
         feed["headlines"] = board.for_pair(s.pairs, pair)
+        feed["headlines_fetched_at"] = board.snapshot(s.pairs).get("fetched_at")
         return feed
 
     @api.get("/narrative/status")

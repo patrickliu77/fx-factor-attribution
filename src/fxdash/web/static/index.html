@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="style.css">
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("fxdash.theme")||"dark")}catch(e){}</script>
 </head>
 <body>
@@ -20,6 +20,7 @@
     <nav class="nav" id="nav"></nav>
     <div class="session" id="session" hidden></div>
     <a class="pulse" id="pulse" href="#/news" hidden></a>
+    <a class="pulse" id="built" href="#/news" hidden></a>
     <div class="masthead__right">
       <div class="seg" id="langseg"></div>
       <button class="iconbtn" id="themebtn" type="button"></button>
@@ -27,7 +28,8 @@
   </header>
 </div>
 <main id="view"></main>
-<script src="/vendor/echarts.min.js"></script>
-<script type="module" src="/app.js"></script>
+<footer class="foot" id="foot"></footer>
+<script src="vendor/echarts.min.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

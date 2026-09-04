@@ -802,7 +802,9 @@ def test_today_headlines_are_live_and_reach_the_pair_panel(site, monkeypatch):
     monkeypatch.setattr(headlines, "today_str", lambda: "2026-09-02")
 
     body = client.get("/api/news").json()
-    assert body["today"]["mode"] == "live"
+    # a snapshot taken at fetched_at, never called "live" (2026-09-04 ruling)
+    assert body["today"]["mode"] == "fetched"
+    assert body["today"]["fetched_at"]
     assert body["today"]["date"] == "2026-09-02"  # wall-clock date, not contract as_of
     assert [i["url"] for i in body["today"]["items"]] == [
         "https://news.google.com/rss/articles/head1"]   # today's only
@@ -818,6 +820,7 @@ def test_today_headlines_are_live_and_reach_the_pair_panel(site, monkeypatch):
     assert {h["url"] for h in feed["headlines"]} == {
         "https://news.google.com/rss/articles/head1",
         "https://news.google.com/rss/articles/head2"}
+    assert feed["headlines_fetched_at"]          # the pair panel states its fetch time too
     assert feed["items"] == []                   # residual-linked stories still only on trigger days
 
 

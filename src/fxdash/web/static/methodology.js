@@ -13,7 +13,7 @@
 //    answers how it is computed, why, and how to read it; edge cases and past
 //    rulings go in the appendix; no dashes; no anthropomorphising; comparative
 //    sentences are kept only where they prevent a specific misreading.
-import { getLang } from "/i18n.js";
+import { getLang } from "./i18n.js";
 
 /* ------------------------------------------------------------------ figures */
 const ARROW = `<defs><marker id="mArr" viewBox="0 0 10 10" refX="9" refY="5"

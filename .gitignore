@@ -8,3 +8,5 @@ __pycache__/
 # Anchored at the repository root: src/fxdash/data/ is source code.
 /data/
 /outputs/
+# static site build (python -m fxdash.web.build), published from gh-pages
+/site/

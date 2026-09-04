@@ -186,6 +186,49 @@ so fifteen modules were silently untracked while an in-place run of the suite
 passed, because the files were physically present. Only a clone shows what was
 actually committed.
 
+## Publishing the site
+
+`ops/publish.ps1` renders the dashboard into `site/` with
+`python -m fxdash.web.build` and force-pushes that directory, as a single
+commit, to the `gh-pages` branch of the public repository, which GitHub Pages
+serves. The third scheduled task, `fxdash-publish`, runs it at 20:45 local,
+after the pipeline (19:30) and the narrative run (20:15):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ops\register_publish_task.ps1 -WhatIf
+powershell -ExecutionPolicy Bypass -File ops\register_publish_task.ps1
+
+powershell -ExecutionPolicy Bypass -File ops\publish.ps1 -WhatIf   # build only
+```
+
+A build is the static assets as they are, every API response the frontend can
+request written as a file under `api/` with the query parameters encoded in the
+file name, and `build.json` with the build time and the machine's UTC offset.
+The page detects `build.json` and reads those files instead of calling `/api`;
+the same source serves the live server at the root and the published site
+under a project path, which is why every URL in it is relative. Headlines and
+the dollar index are therefore snapshots taken at build time, and the page
+says when they were fetched rather than calling them live.
+
+Boundaries are the web layer's: read `outputs/` and `data/cache/` only, write
+only `site/`, never touch either status.json. A publish failure is this task's
+own and leaves the other two heartbeats alone.
+
+Three heartbeats, none a substitute for another. The pipeline's
+`last_live_success` and the narrative layer's `last_run` say whether those
+jobs ran; `build.json`'s `built_at` says whether the page was rebuilt. If the
+pipeline or the narrative layer dies, the page keeps being rebuilt on schedule
+and its build time stays fresh; if the build dies, the other two stamps keep
+looking fresh on a page nobody is refreshing. The page shows all three on the
+News page, computes every age in the browser from the timestamps, and carries
+the build time as a chip in the header.
+
+The site's history is discarded on purpose: `site/` is re-initialised on every
+run and pushed with `--force`, so `gh-pages` always holds exactly one commit.
+Before the first publish, and after any change to the frontend, serve the build
+locally under a project-style path and click through it, then push, then clone
+`gh-pages` into a clean directory and compare it with the build.
+
 ## Resolved issues
 
 Kept here because each one was invisible to the checks that existed at the time.
