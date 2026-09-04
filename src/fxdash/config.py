@@ -1,4 +1,6 @@
-"""Finalized parameter registry. Values come from docs/SPEC_phase1.md; change the SPEC first."""
+"""Finalized parameter registry: the single place the code reads its fixed parameters
+from. Each value was settled in the project's design notes before it landed here, and
+a change starts there, not in this file."""
 
 from pathlib import Path
 

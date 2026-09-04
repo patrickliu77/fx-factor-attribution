@@ -3,7 +3,7 @@ summation).
 
 Yesterday / past week / past month = per-key sums of contributions / y /
 residual / systematic / exogenous over each pair's last 1 / 5 / 21
-**trading-day rows** (not calendar days). PLAN.md part five verbatim: "weekly
+**trading-day rows** (not calendar days). The project plan, part five, verbatim: "weekly
 and monthly attribution is just the daily contribution summed along time."
 Nothing else gets computed.
 

@@ -1,4 +1,4 @@
-"""Narrative layer (SPEC_phase3.md).
+"""Narrative layer (SPEC_phase3).
 
 This module never goes online and never calls an LLM: retrieval and generation are
 stubbed throughout.

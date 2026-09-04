@@ -31,9 +31,15 @@ powershell -ExecutionPolicy Bypass -File ops\register_narrative_task.ps1 -WhatIf
 powershell -ExecutionPolicy Bypass -File ops\register_narrative_task.ps1
 ```
 
-Both scripts derive the repository and interpreter paths at run time rather than
-hardcoding them. `-At` changes the time, `-Python` picks the interpreter. After
-registering, each script exports the task XML and checks the settings that
+All three scripts (the two registrations and `serve.ps1`) derive the repository
+path from their own location and resolve the interpreter at run time, in this
+order: an explicit `-Python <path>`; otherwise the first `python` (or `python3`)
+on PATH that can import this project's dependencies; otherwise
+`%USERPROFILE%\miniconda3\python.exe`. The probe imports rather than checking
+that a file exists, because the python on PATH is often another project's
+environment or the Microsoft Store stub. Each script prints which interpreter
+it chose and why, so run with `-WhatIf` first when in doubt. `-At` changes the
+time. After registering, each script exports the task XML and checks the settings that
 matter, then prints the whole document: checking only the settings the script
 sets is not enough, because the one that has actually caused a failure here
 (`StopOnIdleEnd`, which kills the task the moment someone touches the keyboard)

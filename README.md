@@ -149,6 +149,11 @@ tests/                 342 tests, no network access
 ops/                   scheduling and serving scripts
 ```
 
+Comments cite the project's internal design documents (SPEC_phase1 through
+SPEC_phase3, SPEC_web) and its working rules (CLAUDE.md) by section or rule
+number. Those documents are not part of this repository; each citing comment
+restates the point it relies on.
+
 ## Status
 
 Phase 0 (factor diagnostics) and Phase 1 (the attribution engine) are complete.

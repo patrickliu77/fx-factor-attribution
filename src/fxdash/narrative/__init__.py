@@ -1,4 +1,4 @@
-"""Phase 3 news narrative layer (SPEC_phase3.md).
+"""Phase 3 news narrative layer (SPEC_phase3).
 
 Reads only outputs/contract/, writes only outputs/narrative/. The attribution
 engine is untouched, and a failure in the narrative layer must never change the

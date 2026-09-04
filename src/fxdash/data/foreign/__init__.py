@@ -1,8 +1,8 @@
 """Six-country official daily government bond yields.
 
-Endpoints, series keys and format pitfalls: docs/SPEC_phase1.md section 2, item 2a.
-Unofficial daily sources must never serve as the primary source (CLAUDE.md 9). Every
-fetcher returns a DataFrame with columns fixed as short/long, in percentage points.
+Endpoints, series keys and format pitfalls are documented at the top of each country
+module. Unofficial daily sources must never serve as the primary source (CLAUDE.md 9).
+Every fetcher returns a DataFrame with columns fixed as short/long, in percentage points.
 """
 
 from __future__ import annotations

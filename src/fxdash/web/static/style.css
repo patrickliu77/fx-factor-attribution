@@ -1,4 +1,4 @@
-/* FX Dashboard visual layer. The reference is reference/frontend_design/FX Dashboard.html.
+/* FX Dashboard visual layer.
    Two typefaces: Outfit carries headings and body text, IBM Plex Mono carries every number.
    Square corners throughout, no border-radius (dots excepted, those are a shape and
    not a rounded corner).

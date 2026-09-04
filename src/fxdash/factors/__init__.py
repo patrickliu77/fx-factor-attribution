@@ -1,4 +1,4 @@
-"""Factor construction. Factor library finalized in docs/SPEC_phase1.md section 3."""
+"""Factor construction. The factor library is fixed; the per-pair sets live in config.py."""
 
 from .build import build_pair_panel, factor_stale_names
 
