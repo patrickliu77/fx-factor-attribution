@@ -1,164 +1,160 @@
-# fx-dashboard
+# FX Factor Attribution Dashboard
 
-Daily factor attribution for six USD exchange rates. Every trading day the
-system pulls its inputs, refits rolling regressions, decomposes each day's move
-into factor contributions plus a residual, and publishes the result through a
-read-only contract, a set of static report pages, and a local dashboard. When a
-residual is large enough to say the move happened outside the model, a narrative
-layer retrieves that day's news and writes a short, fact-checked note about what
-the model did not explain.
+FX moves are easy to explain after the fact, especially when the explanation only
+has to sound plausible. I wanted a record that could be checked day by day. This
+project takes six USD exchange rates, measures the part of each daily move associated
+with a fixed set of market factors, and leaves the rest visible as a residual.
 
-The point of the project is explanation, not prediction. Attribution is
-contemporaneous: it accounts for a move that has already happened, in event
-time. Nothing here forecasts a rate.
+The six pairs are USD/EUR, USD/JPY, USD/CAD, USD/NOK, USD/AUD, and USD/MXN. They are
+all stored as USD/XXX, so a positive return always means a stronger dollar. The
+pipeline works with completed daily bars and has no forecasting target.
 
-## What it produces
+The current dashboard is published at
+[patrickliu77.github.io/fx-factor-attribution](https://patrickliu77.github.io/fx-factor-attribution/).
 
-For each of USDEUR, USDJPY, USDCAD, USDNOK, USDAUD and USDMXN, on each trading
-day, under three rolling windows and three estimators:
+## What the daily result contains
 
+For every pair, model, and rolling window, the accounting is
+
+```text
+daily FX return = factor contributions + residual
 ```
-y(t) = sum_k beta_k(t) * x_k(t) + residual(t)
-```
 
-`y` is the daily log return of the pair, quoted USD/XXX throughout, so a rise
-always means a stronger dollar. The betas come from a rolling window that ends
-at `t-1`, never including the day being explained. The identity closes by
-construction, which makes it a usable test anchor: weekly and monthly
-attribution is nothing more than these daily contributions summed along time.
+Each contribution is the factor's move on day `t` multiplied by a coefficient fitted
+through day `t-1`. The date being explained never appears in its own training sample.
+This gives three useful pieces of the move:
 
-Factors are a fixed per-pair set: a leave-one-out dollar factor, a leave-one-out
-carry factor, short and long rate differentials against the matching US tenor,
-the VIX change, and one or two benchmarked commodity or credit series chosen per
-pair. Eight factors per pair is a hard cap.
+* `systematic`: the leave one out dollar and carry factors
+* `exogenous`: rates, volatility, commodities, and credit variables
+* `residual`: whatever the factor set did not capture
 
-## Models
+Daily contributions add exactly to the observed return once the residual is included.
+The weekly and monthly views are sums of those daily records.
 
-| Estimator | Role |
+The main number shown in the dashboard is OLS with a 126 trading day window. The
+pipeline also runs 63 and 252 day windows. Ridge shows how much correlated factors
+can move the allocation. Lasso selects a smaller factor set, followed by an OLS refit
+on that set. PCA tracks common structure across the six currencies and stays outside
+the attribution numbers.
+
+Ridge and Lasso penalties are chosen with forward time series splits. Scaling is
+fitted inside each training window, then coefficients are returned to their original
+units before the contribution is calculated.
+
+## Factors and data
+
+Every pair uses a dollar factor built from the other five currencies, a leave one out
+carry factor, short and long rate differentials, and the daily change in VIX. The
+pair level additions are deliberately small:
+
+| Pair | Additional variables |
 |---|---|
-| OLS | The attribution number. `OLS` at the 126-day window is the canonical figure every single-number consumer reads. |
-| Ridge | A stability check under collinear factors. Its penalty is chosen on forward-chaining splits and reselected every 21 trading days. |
-| Lasso | Variable selection only. Coefficients for attribution come from an OLS refit on the selected set, never from the penalized fit. |
-| PCA | Monitoring and alerting only. It produces no attribution number, and components are never given economic labels by rank. |
+| USD/JPY | Gold |
+| USD/CAD | WTI crude |
+| USD/NOK | Brent crude |
+| USD/AUD | Copper and gold |
+| USD/MXN | EMB |
 
-The three attribution estimators are computed side by side and never averaged.
-A robustness check measures how far Ridge and post-Lasso sit from OLS in basis
-points, normalized by that pair's own recent residual scale, and reports one of
-four states: the three agree, Ridge diverges, Lasso swapped factors, or Lasso
-selected nothing. It is a diagnostic shown next to the numbers, not an alert,
-and it never changes the system's green/yellow/red state.
+Credit and excess bond return series are available during Lasso selection. The full
+candidate set is capped at eight variables per pair.
 
-Standardization happens inside the training window only, and coefficients are
-converted back to original units before anything is attributed. Cross-validation
-is forward-chaining; the data is never shuffled.
+Yahoo Finance supplies exchange rates, commodities, and ETFs. US rates, VIX, and
+credit spreads come from FRED. Foreign yields come from the Deutsche Bundesbank,
+Japan's Ministry of Finance, the Bank of Canada, Norges Bank, Banxico, and the Reserve
+Bank of Australia.
 
-## Data
+Daily timestamps from these sources do not all describe the same market close. The
+project tests alignment by pair and stores the chosen offsets in a frozen profile.
+The download path is also fixed: try the source, fall back to the last good cache,
+then try a user supplied local file. Every fallback is written to the validation log.
 
-Prices, commodities and ETFs come from Yahoo Finance; US rates, the VIX and
-credit spreads from FRED; foreign government yields from the official source in
-each country (Bundesbank, Japan's Ministry of Finance, Bank of Canada Valet,
-Norges Bank, Banxico SIE, RBA F2).
+Some official series arrive several days late. A row that uses a carried value is
+marked provisional. It can be recalculated after the official observation arrives.
+Completed rows stay frozen during regular live runs, which keeps the historical
+record stable.
 
-Acquisition follows a fixed three-step fallback: fetch online, else the last
-successful cache, else a local user file. Every fallback is named in the
-validation log with the file and its last date. An unavailable series is never
-silently replaced by a proxy; a substitute must be defined and named separately
-and travels under its own name through the log and the model.
+## Residuals and news
 
-Where a source publishes with a lag, the carried-forward value is marked
-provisional, the marking travels downstream, and the row is recomputed once the
-official value lands. A provisional row that stays unfilled past its age limit
-turns the status yellow rather than waiting indefinitely.
+The residual is part of the result. It also acts as the trigger for the narrative
+layer. A pair is eligible when its absolute residual z score reaches 2.0 and the
+absolute residual reaches 50 basis points. The system processes at most three pairs
+on one date.
+
+For a triggered pair, Google News RSS provides a dated source set. Gemini receives
+those sources together with a table of model facts and recent context. Its English
+and Chinese output goes through six checks covering source membership, publication
+dates, numbers, causal wording, directional forecasts, and consistency between the
+two language versions.
+
+The saved record includes all retrieved sources, the raw response, verification
+results, usage, and a content hash. A failed check prevents publication while keeping
+the record available for review. News is shown as context for a pair and date. No
+headline receives a percentage or a portion of the residual.
+
+## Dashboard
+
+The local application is a FastAPI service with a small JavaScript frontend. It has
+News, FX, Attribution, and Methodology views, plus English and Chinese copy and dark
+and light themes.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ops\serve.ps1
+```
+
+This serves the dashboard at `http://127.0.0.1:8321`. The service reads a snapshot
+from `outputs/` and replaces it after a successful nightly run. If a reload fails,
+the previous snapshot remains available.
+
+The public site uses the same frontend with selected API responses written to static
+JSON files. Its prices and headlines are snapshots taken at the build time displayed
+on the page. The pipeline also creates self contained HTML reports in
+`outputs/reports/`.
 
 ## Running it
 
-```powershell
-setx FRED_API_KEY   <key>          # restart the terminal afterwards
-setx BANXICO_TOKEN  <token>
-setx GEMINI_API_KEY <key>          # narrative layer only
+Three data sources require credentials. They are read from environment variables:
 
+```powershell
+setx FRED_API_KEY <key>
+setx BANXICO_TOKEN <token>
+setx GEMINI_API_KEY <key>
+```
+
+Open a new terminal after using `setx`, then run:
+
+```powershell
 $env:PYTHONPATH = "src"
 
-python -m fxdash.run --mode backfill --start 2010-01-01   # build the history
-python -m fxdash.run --mode live                          # daily increment
-python -m fxdash.narrative.run                            # narrative layer
+python -m fxdash.run --mode backfill --start 2010-01-01
+python -m fxdash.run --mode live
+python -m fxdash.narrative.run
 pytest
 ```
 
-Keys are read from the environment only and appear in no script, log, cache or
-artifact.
-
-`live` is idempotent: rerunning a date produces no duplicate rows, and a
-non-provisional row is never modified. It also fills gaps by itself, so a
-machine that was off for a few days catches up on its next run.
-
-Scheduling, the override flags, the output contract and the Windows-specific
-notes are in [ops/README.md](ops/README.md).
-
-## The dashboard
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ops\serve.ps1     # http://127.0.0.1:8321
-```
-
-A FastAPI service over a single-page frontend, bilingual, dark and light themes.
-Three pages: News, FX, and Attribution, plus a methodology page reached from
-Attribution. The service is a pure downstream consumer, reads `outputs/` only,
-and never imports the attribution engine to recompute anything; the only new
-arithmetic it performs is summation. It hot-reloads when the nightly run lands
-and keeps serving the previous snapshot if a rebuild fails.
-
-There is also a set of static self-contained HTML reports under
-`outputs/reports/`, one page per pair plus an overview, written by each run.
-
-## The narrative layer
-
-A day triggers when the standardized residual is at least 2 in absolute value
-**and** the residual is at least 50 bp, capped at three pairs a day. In practice
-that fires every few days, not daily; the floor exists so a statistically
-unusual day on which the pair barely moved does not earn a write-up.
-
-On a trigger the layer retrieves that day's coverage, sends a fact table to the
-model, and puts the output through six checks before publishing: every source
-must be one that was actually retrieved and dated inside the window, every
-number must match the whitelist of strings the fact table supplied, and no
-causal claim or directional forecast may appear. Failures are recorded rather
-than hidden, and the raw model output is kept regardless so a discarded
-generation can still be traced.
-
-The residual is a property of the trading day, not of any single story. Nothing
-in the interface splits a residual across headlines or assigns a share to one of
-them.
+The live command fills missed dates and merges the new result without duplicating
+rows. Provisional replacements leave an audit trail. Scheduling, override flags,
+output files, and Windows setup are covered in [ops/README.md](ops/README.md).
 
 ## Layout
 
-```
+```text
 src/fxdash/
-  config.py            parameter registry; the SPEC is changed first, then this
-  data/                acquisition, alignment, direction checks, panel assembly
-  factors/             per-pair factor construction
-  models/              OLS, Ridge, Lasso, rolling estimation, PCA monitoring
-  attribution/         the identity, and the contract written to disk
-  schedule/            run modes, idempotent merge
-  narrative/           trigger, retrieval, prompt composition, verification
-  web/                 FastAPI service and the single-page frontend
-  report/              static HTML report generation
-  health.py            health checks     robustness.py  estimator agreement
-  heartbeat.py         liveness          status.py      green/yellow/red
-tests/                 342 tests, no network access
-ops/                   scheduling and serving scripts
+  data/           acquisition, caching, alignment, and panel assembly
+  factors/        factor construction for each pair
+  models/         OLS, Ridge, Lasso, rolling fits, and PCA monitoring
+  attribution/    daily contributions and the output contract
+  schedule/       run modes and idempotent merging
+  narrative/      news retrieval, generation, checks, and storage
+  web/            FastAPI service and browser interface
+  report/         static HTML reports
+  run.py          main pipeline entry point
+
+tests/             offline test suite
+ops/               scheduling, serving, and publishing scripts
 ```
 
-Comments cite the project's internal design documents (SPEC_phase1 through
-SPEC_phase3, SPEC_web) and its working rules (CLAUDE.md) by section or rule
-number. Those documents are not part of this repository; each citing comment
-restates the point it relies on.
+Downloaded data, caches, generated contracts, and private working documents are
+excluded from the public repository. Credentials stay in environment variables.
 
-## Status
-
-Phase 0 (factor diagnostics) and Phase 1 (the attribution engine) are complete.
-Phase 2, daily automation and run monitoring, closed on 2026-09-03 after three
-consecutive green trading days. Phase 3 added the narrative layer, live since
-2026-09-01, and the local dashboard. Phase 4, a daily briefing, has not started.
-
-Tests must all pass for a change to count as delivered.
+The factor research, attribution engine, daily scheduler, monitoring, narrative
+layer, and dashboard are running. A concise daily briefing is the next planned stage.
