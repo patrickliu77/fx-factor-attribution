@@ -1,0 +1,245 @@
+// Bilingual dictionary: English is primary, Chinese is a toggle (SPEC_web §3).
+// Numbers and dates always use the en-US format and do not follow the language.
+// Copy discipline: no dashes anywhere on the site, and no "·"; where a pause is
+// needed use a comma, a colon or parentheses.
+// Evidence wording discipline (2026-09-02 ruling): a story is only contemporaneous
+// associative evidence for an unusual residual, so words that read as causal
+// attribution (share, contribution, explained by, allocated) are forbidden.
+export const DICT = {
+  "nav.news": { en: "News", zh: "新闻" },
+  "nav.fx": { en: "FX", zh: "汇率" },
+  "nav.attribution": { en: "Attribution", zh: "归因" },
+
+  "ctl.model": { en: "MODEL", zh: "模型" },
+  "ctl.window": { en: "WINDOW", zh: "窗口" },
+  "theme.light": { en: "Switch to light", zh: "切换到浅色" },
+  "theme.dark": { en: "Switch to dark", zh: "切换到深色" },
+
+  "tape.session": { en: "SESSION", zh: "交易日" },
+
+  "pulse.label": { en: "NARRATIVE", zh: "叙事层" },
+  "pulse.never": { en: "never run", zh: "从未运行" },
+  "pulse.unreachable": { en: "unreachable", zh: "读不到" },
+  "pulse.ok": { en: "Narrative layer ran on schedule.", zh: "叙事层按时跑过了。" },
+  "pulse.age": { en: "age", zh: "距今" },
+  "pulse.days": { en: "days on record", zh: "天有记录" },
+  "pulse.published": { en: "Latest commentary", zh: "最近一篇短评" },
+  "pulse.nonepub": { en: "none yet", zh: "尚无" },
+  "pulse.pubnote": {
+    en: "set by the market, not by the system, so it never changes this colour",
+    zh: "由市场决定而非系统决定，不参与判色",
+  },
+  "pulse.thresholds": {
+    en: "warn at {warn}h, red at {crit}h",
+    zh: "{warn} 小时转黄，{crit} 小时转红",
+  },
+
+  // ------------------------------------------------------------------ News
+  "news.week.title": { en: "This week's flagged days", zh: "本周的异常日" },
+  "news.week.blurb": {
+    en: "Days where the factor model left an unusually large residual, with the stories retrieved that day as contemporaneous evidence. Newest first.",
+    zh: "因子模型残差异常放大的日子，附当天检索到的报道，作为同期关联证据，最新在前。",
+  },
+  "news.col.story": { en: "Story", zh: "报道" },
+  "news.col.pairs": { en: "Pairs", zh: "货币对" },
+  "news.col.flagged": { en: "Flagged day", zh: "异常日" },
+  "news.today.title": { en: "Today's headlines", zh: "今日头条" },
+  "news.items": { en: "items", zh: "条" },
+  "news.readfull": { en: "Read full story", zh: "阅读全文" },
+  "news.explain": { en: "Explain", zh: "解释" },
+  "news.evline": {
+    en: "Flagged for {pair} on {date}",
+    zh: "{date} {pair} 触发",
+  },
+  "news.dayres": {
+    en: "{pair} residual {bp} bp (z {z})",
+    zh: "{pair} 残差 {bp} bp（z {z}）",
+  },
+  "news.cited": { en: "CITED", zh: "已引用" },
+  "news.opinions": { en: "Opinion and analysis", zh: "观点与分析" },
+  "news.opinionsnote": {
+    en: "Commentary, analysis, market recaps and trade views, folded away by title markers. Content-based, not source-based; display only, the narrative layer still retrieves everything.",
+    zh: "按标题标记词折叠的评论、分析、行情复述与交易观点。判据按内容不按来源；只作用于展示层，叙事层照常检索全部。",
+  },
+  "news.nosummary": { en: "No summary was retrieved for this story.", zh: "这条报道没有取到摘要。" },
+  "news.empty": {
+    en: "No residual anomaly was flagged, so the narrative layer did not go looking for news.",
+    zh: "没有触发残差异常，叙事层未启动检索，因此没有头条。",
+  },
+  "news.live": { en: "LIVE", zh: "实时" },
+  "news.recent": { en: "Recent headlines", zh: "近日头条" },
+  "news.earlier": { en: "Earlier this week", zh: "本周早些时候" },
+  "news.earliernote": {
+    en: "Live headlines from earlier in the calendar week, shown for context only.",
+    zh: "本日历周更早的实时头条，仅作背景。",
+  },
+  "news.notodayyet": {
+    en: "No stories dated today yet. The wires fill in as the day goes on.",
+    zh: "还没有标注今天日期的报道，随时间推移会陆续出现。",
+  },
+  "news.alsoby": { en: "Also reported by", zh: "同题报道" },
+  "news.livenote": {
+    en: "Live from Google News, refreshed every 30 minutes. Headlines are shown as retrieved and carry no model judgment; flagged-day evidence lives in the list above.",
+    zh: "来自 Google News，每 30 分钟刷新。头条按检索结果原样展示，不含模型判断；与异常残差相关的证据在上方列表。",
+  },
+  "news.feedfail": {
+    en: "Could not reach the news feed just now.",
+    zh: "暂时读不到新闻源。",
+  },
+  "news.week.window": {
+    en: "Window {start} to {end}, the last 5 trading days",
+    zh: "窗口 {start} 至 {end}，最近 5 个交易日",
+  },
+  "news.fallback.title": {
+    en: "Latest flagged day ({date})",
+    zh: "最近一次触发（{date}）",
+  },
+  "news.fallback.note": {
+    en: "Nothing was flagged inside the current window. These stories are from the most recent flagged day, dated above, and are not part of this week.",
+    zh: "本周窗口内没有触发。以下是最近一个触发日的报道，日期如上，不属于本周。",
+  },
+  "news.emptyweek": {
+    en: "No day was flagged inside the current window.",
+    zh: "本周窗口内没有触发日。",
+  },
+  "news.side.pairs": { en: "The six pairs, past 5 days", zh: "六对货币，近五日" },
+  "news.side.flagged": { en: "Flagged days", zh: "触发日" },
+  "news.side.noflag": { en: "No flagged day this week.", zh: "本周没有触发日。" },
+  "news.side.note": {
+    en: "The residual is the part of the move the factor model does not account for. Stories are same-day evidence, nothing more; no piece of the residual is assigned to any story.",
+    zh: "残差是因子模型未能解释的那部分变动。报道只是同日证据，不再把残差的任何一部分归到某条报道头上。",
+  },
+
+  // --------------------------------------------------------------- Explain
+  "explain.headpair": { en: "FROM THE {pair} COMMENTARY", zh: "{pair} 短评怎么说" },
+  "explain.head": { en: "FROM THE COMMENTARY", zh: "短评怎么说" },
+
+  // -------------------------------------------------------------------- FX
+  "sys": { en: "Systematic", zh: "系统性" },
+  "exo": { en: "Exogenous", zh: "外生" },
+  "res": { en: "Residual", zh: "残差" },
+  "quote.provisional": { en: "PROVISIONAL", zh: "未终局" },
+  "fx.stories": { en: "stories", zh: "条报道" },
+  "fx.nostories": { en: "no stories", zh: "无报道" },
+  "fx.storiesweek": { en: "stories on flagged days", zh: "条异常日报道" },
+  "fx.newsmoving": { en: "News around {pair} flagged days", zh: "{pair} 异常日的报道" },
+  "fx.nonewsforpair": {
+    en: "No flagged-day story cites this pair recently.",
+    zh: "近期触发日中没有报道涉及这一对。",
+  },
+  "fx.onmodel": { en: "on", zh: "使用" },
+
+  "range.1d": { en: "1D", zh: "1D" },
+  "range.5d": { en: "5D", zh: "5D" },
+  "range.1m": { en: "1M", zh: "1M" },
+  "range.6m": { en: "6M", zh: "6M" },
+  "range.ytd": { en: "YTD", zh: "今年" },
+  "range.1y": { en: "1Y", zh: "1Y" },
+  "range.5y": { en: "5Y", zh: "5Y" },
+  "range.max": { en: "MAX", zh: "全史" },
+  "chart.intraday": {
+    en: "Intraday prices are not collected yet. Pick 5D or wider.",
+    zh: "尚未采集日内价格，请选择 5D 或更长区间。",
+  },
+  "chart.nocache": { en: "Price history unavailable.", zh: "价格历史不可用。" },
+  "chart.short": { en: "Not enough history for this range.", zh: "该区间历史不足。" },
+
+  "read.title": { en: "Today's read", zh: "今日总述" },
+  "read.pending": { en: "AUTO SUMMARY", zh: "自动摘要" },
+  "read.note": {
+    en: "Composed from the attribution table. Click any pair to see the news behind its residual.",
+    zh: "由归因表直接拼出。点击任一货币对可看它残差背后的新闻。",
+  },
+  "read.lead": {
+    en: "{pair} led the session at {move}.",
+    zh: "{pair} 是当日幅度最大的一对，{move}。",
+  },
+  "read.split": {
+    en: "Across the six pairs the model puts an average {sys} of the move on systematic dollar and carry, {exo} on exogenous factors, and leaves {res} unexplained.",
+    zh: "六对的平均分解是：{sys} 归于系统性的美元与利差，{exo} 归于外生因子，{res} 未获解释。",
+  },
+  "read.residual": {
+    en: "{pair} carries the widest residual at z = {z}, which is the trigger the narrative layer watches.",
+    zh: "{pair} 的残差最宽，z = {z}，这正是叙事层要盯的触发信号。",
+  },
+  "read.quiet": {
+    en: "No pair shows an unusual residual today, so nothing is flagged for narrative review.",
+    zh: "今日没有 pair 出现异常残差，无需叙事层介入。",
+  },
+  "read.unavailable": { en: "No attribution rows for this selection.", zh: "当前选择下没有归因数据。" },
+
+  "legend.open": { en: "What do these three mean?", zh: "这三个是什么意思？" },
+  "legend.sys": {
+    en: "The part of the move that every dollar pair shared today, plus the part carry explains. If this is large, the dollar moved, not the currency on the other side.",
+    zh: "当天所有美元对共同经历的那部分变动，加上利差能解释的部分。这一段大，说明是美元在动，不是对手货币在动。",
+  },
+  "legend.exo": {
+    en: "Traced to outside forces the model measures: rate differentials, oil and metals, credit, equity volatility. Pair specific but still mechanical.",
+    zh: "能追溯到模型所测外部力量的那部分：利差、油与金属、信用、股市波动率。因对而异，但仍是机械的。",
+  },
+  "legend.window": {
+    en: "How much history the regression sees. The model refits every day using only the last N trading days, roughly 3, 6, or 12 months. Short windows adapt fast but are noisy; long windows are steadier but slower to notice a regime change. 126 is the default.",
+    zh: "回归能看到多长的历史。模型每天只用最近 N 个交易日重新拟合，约合 3、6、12 个月。窗口短适应快但噪声大；窗口长更稳，但对状态切换反应慢。默认 126。",
+  },
+  "legend.model": {
+    en: "Three ways of fitting the same decomposition. OLS is plain least squares, every factor keeps its raw coefficient. Ridge shrinks coefficients when factors overlap, so the split is steadier. Lasso first picks the few factors that matter, then refits OLS on just those. When all three roughly agree, the read is robust.",
+    zh: "拟合同一套分解的三种方式。OLS 是普通最小二乘，每个因子拿原始系数。Ridge 在因子相互重叠时把系数往回收，分解更稳。Lasso 先挑出真正要紧的少数因子，再只对它们重新做 OLS。三个模型大体一致时，这个读数才算扎实。",
+  },
+  "legend.res": {
+    en: "What the model cannot account for. When it blows out, the narrative layer goes looking for same-day news as evidence.",
+    zh: "模型解释不了的部分。它异常放大时，叙事层会去找当天的新闻作为证据。",
+  },
+
+  // ----------------------------------------------------------- Attribution
+  "attr.week": { en: "Week of {start} to {end}", zh: "{start} 至 {end} 当周" },
+  "attr.title": { en: "Why each pair moved", zh: "每一对为什么动" },
+  "attr.blurb": {
+    en: "The weekly move decomposed into dollar and carry, rates, risk, and commodities, with the residual left over. Below, the stories cited on recent flagged days, shown as contemporaneous evidence for residuals the model could not explain.",
+    zh: "把周度变动分解为美元与利差、利率、风险、商品，剩下的是残差。下方是近期触发日被引用的报道，作为模型无法解释部分的同期证据。",
+  },
+  "attr.methodology": { en: "Methodology", zh: "方法论" },
+  "attr.robust": { en: "Robustness", zh: "稳健性" },
+  "attr.dayresidual": { en: "Residual that day", zh: "当日残差" },
+  "attr.restip": {
+    en: "{pair} residual on {date}. It belongs to the day, not to any single story.",
+    zh: "{date} {pair} 当日残差。它属于这一天，不属于任何单条报道。",
+  },
+  "robust.agree": { en: "MODELS AGREE", zh: "三路一致" },
+  "robust.ridge": { en: "RIDGE DIVERGES", zh: "RIDGE 偏离" },
+  "robust.lasso": { en: "LASSO RESELECTS", zh: "LASSO 换因子" },
+  "robust.abstain": { en: "LASSO ABSTAINS", zh: "LASSO 弃权" },
+  "robust.tip": {
+    en: "OLS vs Ridge {r}, OLS vs post-Lasso {l}, in units of a typical residual. Reading stability of today's attribution, not an alert.",
+    zh: "OLS 对 Ridge {r}，OLS 对 post-Lasso {l}，单位是一个典型残差。这是当日归因的读数稳定性，不是告警。",
+  },
+  "attr.pair": { en: "Pair", zh: "货币对" },
+  "attr.move": { en: "Move", zh: "变动" },
+  "attr.decomp": { en: "Decomposition (bp)", zh: "分解（bp）" },
+  "attr.matrix": { en: "Stories cited on flagged days", zh: "触发日引用的报道" },
+  "attr.nomatrix": {
+    en: "No flagged day on record yet.",
+    zh: "还没有触发日记录。",
+  },
+
+  "loading": { en: "Loading", zh: "加载中" },
+  "error": { en: "Could not reach the server.", zh: "无法连接服务。" },
+};
+
+let lang = localStorage.getItem("fxdash.lang") || "en";
+
+export function getLang() { return lang; }
+
+export function setLang(next) {
+  lang = next === "zh" ? "zh" : "en";
+  try { localStorage.setItem("fxdash.lang", lang); } catch (e) { /* private mode */ }
+  document.documentElement.lang = lang === "zh" ? "zh" : "en";
+}
+
+export function t(key, vars) {
+  const entry = DICT[key];
+  let text = entry ? (entry[lang] || entry.en) : key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) text = text.split("{" + k + "}").join(v);
+  }
+  return text;
+}

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.env
+
+# Everything the pipeline writes, and every cached or local input.
+# Anchored at the repository root: src/fxdash/data/ is source code.
+/data/
+/outputs/
