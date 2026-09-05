@@ -162,6 +162,15 @@ withheld: validation samples inferred policy effects unsupported by the retrieve
 titles. Richer event evidence and semantic evaluation are needed before that
 section can run automatically. Audio and multi-agent delivery remain future work.
 
+The News page separates preparation, edition and delivery records. Its archive
+selector shows the latest twenty saved editions without filling missing dates.
+A browser-side New York clock flags older editions even when the static site has
+not been rebuilt. Each build identifies the edition it contains; this avoids
+mistaking a push receipt written after the build for its current delivery state.
+Saved records do not prove that the scheduler is still running. An old static
+page cannot observe a later failed push. Unreadable archives are labelled and
+left unchanged, with earlier editions still available through the selector.
+
 ## Running locally
 
 Install the Python packages listed in the public repository:

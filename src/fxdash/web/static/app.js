@@ -10,7 +10,8 @@ import * as CH from "./charts.js";
 import { methodologyHtml } from "./methodology.js";
 import { researchHtml, researchOptions } from "./research.js";
 import { rankedContributions, residualFlag } from "./presentation.js";
-import { driversHtml, briefingHtml } from "./context.js";
+import { driversHtml } from "./context.js";
+import { briefingBoardHtml, bindBriefingBoard, refreshBriefingStatus } from "./briefing-board.js";
 
 /* global echarts */
 
@@ -615,7 +616,7 @@ async function pageNews(view) {
     <div class="headrow"><div class="dateline">${esc(longDate(news.as_of))}</div></div>
     <div class="news">
       <section class="news__main">
-        ${briefingHtml(news.briefing)}
+        ${briefingBoardHtml(news.briefing, news.briefing_archive, build)}
         ${driversHtml(news.drivers)}
         <div class="col gap20">
           <div>
@@ -670,6 +671,7 @@ async function pageNews(view) {
       </aside>
     </div>`;
 
+  bindBriefingBoard(view, news.briefing, news.briefing_archive, build);
   const explainHtmlFor = (k) => {
     const s = byKey.get(k);                    // headlines have no Explain button; a miss is empty
     if (!s) return "";
@@ -1306,6 +1308,7 @@ window.addEventListener("hashchange", render);
   // Every five minutes: the live server may have new quotes and a new heartbeat
   // file; a static build has neither, so only the ages are recomputed there
   setInterval(() => {
+    refreshBriefingStatus();
     if (build.mode === "live") renderTape();
     renderPulse();
     renderBuilt();

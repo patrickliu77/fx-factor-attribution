@@ -23,6 +23,10 @@ from test_web import EMPTY_RSS, _write_cache, _write_fixture
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     from fxdash.web import headlines, market
+    from fxdash.narrative import morning
+    # The news response now records when run files were observed. Byte-for-byte
+    # build comparisons require one clock instant for both reads.
+    monkeypatch.setattr(morning, "now_utc", lambda: datetime(2026,9,5,tzinfo=timezone.utc))
     monkeypatch.setattr(market, "_fetch_dxy", lambda: None)
     monkeypatch.setattr(headlines, "_fetch", lambda q: EMPTY_RSS)
 

@@ -32,6 +32,7 @@ export function briefingHtml(brief) {
     inputs_not_from_this_morning:copy('No input packet captured this morning.','没有本日早晨采集的输入。'),
     previous_session_attribution_unavailable:copy('Previous-session attribution was unavailable at collection.','采集时未收到上一交易日归因。'),
     invalid_packet:copy('A usable pre-cutoff packet is unavailable.','缺少截止前的有效输入。'),
+    archive_unreadable:copy('This frozen archive could not be read. It has not been replaced with older text.','这份冻结档案无法读取，未用旧稿替换。'),
     checked_draft_unavailable:copy('A checked draft was unavailable at publication.','发布时尚无通过检查的稿件。'),
     'Provisional attribution is included and labelled.':copy('Provisional figures are marked.','待确认数字已标注。'),
     'No driver commentary passed verification; saved figures remain available.':copy('No driver note passed all checks; the saved figures remain available.','没有因子解读通过全部检查，保留已保存数字。'),

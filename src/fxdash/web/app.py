@@ -25,7 +25,7 @@ from . import headlines as HL
 from .comparison import report as comparison_report
 from .drivers import DriverBoard
 from ..narrative.briefing import load_preview
-from ..narrative.morning import read_latest as latest_morning
+from ..narrative.briefing_archive import dashboard as briefing_dashboard
 from . import newsfeed as NF
 from .market import RANGES as MARKET_RANGES
 from .store import DataStore, clean, clean_list
@@ -460,6 +460,7 @@ def create_app(output_dir: Path | None = None,
                 "errors": live.get("errors", []),
             }
         earlier = {"start": week_monday, "end": wall_today, "items": earlier_items}
+        briefing = briefing_dashboard(s.output_dir, s.data_version)
 
         return {
             "as_of": s.date_last,
@@ -473,7 +474,8 @@ def create_app(output_dir: Path | None = None,
             "covered_days": [d.get("date") for d in days],
             "drivers": drivers.snapshot(s),
             "headline_exclusions": live.get("excluded", []),
-            "briefing": latest_morning(s.output_dir, s.data_version) or load_preview(s.output_dir, s.data_version),
+            "briefing": briefing.pop("current") or load_preview(s.output_dir, s.data_version),
+            "briefing_archive": briefing,
         }
 
     @api.get("/pairs/{pair}/news")

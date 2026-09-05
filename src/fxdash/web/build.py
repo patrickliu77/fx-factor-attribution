@@ -163,6 +163,7 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
 
     files: list[str] = []
     requests: dict[str, str] = {}
+    briefing = None
     for request in request_set(meta):
         response = client.get(API_PREFIX + request)
         response.raise_for_status()
@@ -172,6 +173,10 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
         target.write_bytes(response.content)
         files.append(rel)
         requests[request] = rel
+        if request == "/news":
+            current = response.json().get("briefing") or {}
+            if current.get("mode") == "edition" and current.get("edition_hash"):
+                briefing = {"date": current["date"], "edition_hash": current["edition_hash"]}
 
     moment = (now or datetime.now()).astimezone()
     manifest = {
@@ -183,6 +188,7 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
         "source_commit": _source_commit(),
         "files": sorted(files),
         "requests": requests,
+        "briefing": briefing,
     }
     (out / "build.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest

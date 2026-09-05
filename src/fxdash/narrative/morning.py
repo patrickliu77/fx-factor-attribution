@@ -76,6 +76,17 @@ class Busy(RuntimeError):
     pass
 
 
+class FrozenEditionError(RuntimeError):
+    pass
+
+
+def frozen_edition(path):
+    from .briefing_archive import read_edition
+    if read_edition(path)["state"] == "archive_unreadable":
+        raise FrozenEditionError("The frozen edition is unreadable; it was left unchanged.")
+    return read_json(path)
+
+
 class DayLock:
     """OS-backed nonblocking lock, released even if the worker is terminated."""
     def __init__(self, path):
@@ -253,10 +264,10 @@ def finalize(output_dir: Path, *, clock=now_utc):
     root = output_dir / "briefing" / "days" / day
     destination = root / "edition.json"
     if destination.exists():
-        return read_json(destination)
+        return frozen_edition(destination)
     with DayLock(root / "finalize.lock"):
         if destination.exists():
-            return read_json(destination)
+            return frozen_edition(destination)
         packet = read_json(root / "packet.json")
         eligible, reasons = packet_eligible(packet, moment)
         if eligible:
@@ -280,17 +291,8 @@ def finalize(output_dir: Path, *, clock=now_utc):
 
 
 def read_latest(output_dir, data_version=None):
-    from .driver_notes import PROMPT_VERSION, VALIDATOR_VERSION
-    root = Path(output_dir) / "briefing"
-    editions = sorted(root.glob("days/????-??-??/edition.json"), reverse=True)
-    if editions:
-        result = read_json(editions[0])
-    else:
-        result = read_json(root / "driver-preview.json")
-        if (result.get("data_version") != data_version or result.get("prompt_version") != PROMPT_VERSION
-                or result.get("validator_version") != VALIDATOR_VERSION):
-            return {}
-    return {k: v for k, v in result.items() if k != "evidence"}
+    from .briefing_archive import dashboard
+    return dashboard(output_dir, data_version)["current"]
 
 
 def preview(output_dir, *, clock=now_utc, client_factory=make_client):

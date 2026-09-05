@@ -5,7 +5,7 @@ for one decisive reason: cache persistence. `data/cache/` is gitignored, and a
 runner starts from nothing every time, which would remove the second step of the
 three-step acquisition fallback (online, then cache, then a local user file).
 
-Three independent daily tasks:
+Three independent evening tasks, plus the morning text job described below:
 
 | | Attribution pipeline | Narrative layer | Site publish |
 |---|---|---|---|
@@ -63,7 +63,8 @@ that was off for several days catches up on its next run.
 
 The current registrations use the signed-in user's interactive token. That user
 must remain signed in; a locked session is sufficient. Wake settings do not turn
-on a powered-off computer. The evening schedule has no separate 09:00 ET briefing.
+on a powered-off computer. The separate `fxdash-briefing` task prepares the
+09:00 New York text edition; see Morning text briefing below.
 
 ## Run modes
 
@@ -300,6 +301,25 @@ completed; GitHub Pages deployment can finish later. Evening publication can
 pick up an edition if the morning push failed. Logs go to `outputs/logs/briefing.log`.
 Existing pipeline and residual-narrative status files are untouched. The first
 natural weekday run is still an operational acceptance item. No audio is generated.
+
+The News payload now includes the latest twenty frozen editions and the most
+recent preparation/edition/push observations. Public fields are explicitly
+selected; input packets, raw replies and provider errors remain local. The reader
+never replaces a damaged latest archive with an older edition automatically.
+Unreadable editions stop dispatch before any push and retain a separate failed
+finalization receipt. Push attempts and failures have timestamps and attempt counts.
+
+`build.json.briefing` binds the current edition date to its archived-content hash.
+The frontend checks that binding for static builds, since a successful push receipt
+is written after building and cannot be in that same snapshot. Local mode reads
+the receipt and checks its version. Status observations are labelled with their
+read time; the browser compares edition dates with its current New York clock
+every five minutes. These records do not establish a scheduler heartbeat, and a
+static snapshot cannot reveal failures that happened after it was built.
+
+`ops/audit_briefing_archive.mjs` tests history selection, damaged archives, failed
+pushes and stale builds through browser-only fixtures. It never writes test editions
+to real outputs. Run it with the same browser environment as `audit_frontend.mjs`.
 
 Three heartbeats, none a substitute for another. The pipeline's
 `last_live_success` and the narrative layer's `last_run` say whether those

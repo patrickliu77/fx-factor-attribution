@@ -36,17 +36,33 @@ def dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
             if action == "prepare":
                 return prepare_fn(output_dir, clock=clock)
             receipt = root / "publish.json"
-            if M.read_json(receipt).get("state") == "published":
+            previous = M.read_json(receipt)
+            attempts = previous.get("attempts", 0)
+            attempts = attempts if isinstance(attempts, int) and attempts >= 0 else 0
+            started_at = clock().isoformat(timespec="seconds")
+            try:
+                edition = finalize_fn(output_dir, clock=clock)
+            except Exception as exc:
+                result = {"state": "finalize_failed", "date": day, "error": type(exc).__name__,
+                          "started_at": started_at, "finished_at": clock().isoformat(timespec="seconds"),
+                          "attempts": attempts+1}
+                M.atomic_json(receipt, result)
+                return result
+            if previous.get("state") == "published" and previous.get("edition_hash") == M.digest(edition):
                 return {"state": "already_published", "date": day}
-            edition = finalize_fn(output_dir, clock=clock)
+            M.atomic_json(receipt, {"state": "publishing", "date": day, "started_at": started_at,
+                                    "attempts": attempts+1})
             try:
                 publisher(repo)
                 result = {"state": "published", "date": day,
                           "edition_state": edition["state"],
                           "edition_hash": M.digest(edition),
+                          "started_at": started_at, "attempts": attempts+1,
                           "finished_at": clock().isoformat(timespec="seconds")}
             except Exception as exc:
-                result = {"state": "publish_failed", "date": day, "error": type(exc).__name__}
+                result = {"state": "publish_failed", "date": day, "error": type(exc).__name__,
+                          "started_at": started_at, "finished_at": clock().isoformat(timespec="seconds"),
+                          "attempts": attempts+1}
             M.atomic_json(receipt, result)
             return result
     except M.Busy:
@@ -66,7 +82,7 @@ def main(argv=None):
     result = dispatch(args.output_dir, REPO_ROOT)
     if result["state"] != "idle":
         print(json.dumps(result, ensure_ascii=True))
-    return 1 if result["state"] in ("prepare_failed", "publish_failed") else 0
+    return 1 if result["state"] in ("prepare_failed", "publish_failed", "finalize_failed") else 0
 
 
 if __name__ == "__main__":

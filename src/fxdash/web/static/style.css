@@ -254,6 +254,15 @@ a { color: inherit; text-decoration: none; }
 .context-slate small { color: var(--mute); font: 10.5px var(--mono); }
 .context-audit summary { font: 11px var(--display); color: var(--mute); }
 .brief-preview { border-left: 2px solid var(--accent); padding: 2px 0 2px 22px; }
+.brief-board { border-bottom: 1px solid var(--line); padding-bottom: 26px; min-width: 0; }
+.brief-board .hint { line-height: 1.7; overflow-wrap: anywhere; }
+.brief-status-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 16px; margin: 18px 0; }
+.brief-status-grid dt { color: var(--mute); font-size: 12px; }
+.brief-status-grid dd { margin: 6px 0; font-size: 14px; }
+.brief-status-grid small { font: 10px var(--mono); overflow-wrap: anywhere; color: var(--mute); }
+.brief-history-label { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.brief-history-label select { max-width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); padding: 9px 12px; font: inherit; }
+.brief-board :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .brief-preview > p { margin: 0; line-height: 1.8; overflow-wrap: anywhere; }
 .brief-note { border-top: 1px solid var(--line); padding-top: 14px; }
 .brief-note summary { cursor: pointer; font: 12px var(--mono); color: var(--accent); }

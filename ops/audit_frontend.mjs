@@ -69,6 +69,9 @@ try {
     await page.goto(base+'/#/news');
     await page.locator('.driver-pair').first().waitFor({timeout:60000});
     assert.equal(await page.locator('.driver-pair').count(),6);
+    assert.equal(await page.locator('.brief-board').count(),1);
+    assert.equal(await page.locator('.brief-status-grid > div').count(),3);
+    assert.equal(await page.locator('[data-brief-history]').count(),1);
     if (await page.locator('.brief-preview').count()) {
       const brief = page.locator('.brief-preview');
       assert.ok((await brief.innerText()).includes(lang==='en' ? 'Attribution through' : '归因截至'));
