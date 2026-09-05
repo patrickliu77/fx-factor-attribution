@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FX Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0e1a'/%3E%3Crect x='5' y='19' width='5' height='8' fill='%238b6cff'/%3E%3Crect x='13' y='12' width='5' height='15' fill='%233b9eff'/%3E%3Crect x='21' y='6' width='5' height='21' fill='%23c8f542'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+<script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("fxdash.theme")||"dark")}catch(e){}</script>
+</head>
+<body>
+<div class="top">
+  <div class="tape" id="tape" hidden></div>
+  <header class="masthead">
+    <a class="wordmark" href="#/fx"><span>FX</span> Dashboard</a>
+    <nav class="nav" id="nav"></nav>
+    <div class="session" id="session" hidden></div>
+    <a class="pulse" id="pulse" href="#/news" hidden></a>
+    <a class="pulse" id="built" href="#/news" hidden></a>
+    <div class="masthead__right">
+      <div class="seg" id="langseg"></div>
+      <button class="iconbtn" id="themebtn" type="button"></button>
+    </div>
+  </header>
+</div>
+<main id="view"></main>
+<footer class="foot" id="foot"></footer>
+<script src="vendor/echarts.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
