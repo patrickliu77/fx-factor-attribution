@@ -1,7 +1,7 @@
 """Source-linked commentary for leading factors, separate from residual notes.
 
 Numeric attribution is rendered by code. The model supplies short bilingual
-event/context/conditional-observation text and exact supporting source excerpts.
+event text and exact supporting source excerpts. Code supplies the checking plan.
 Failed drafts remain in the archive and never enter the published text.
 """
 from __future__ import annotations
@@ -98,6 +98,9 @@ def source_set(packet: dict, row: dict) -> list[dict]:
     # Interleave channels; a prolific factor search cannot crowd out the currency.
     keys = [row["currency_news"]] + [f["news_key"] for f in row.get("leading", [])]
     by_url = {}
+    identities = {}
+    from .news_quality import REVISION, canonical_url, headline_key
+    screened = packet.get("source_policy") == REVISION
     for rank in range(3):
         for key in keys:
             items = packet["slates"].get(key, {}).get("items", [])
@@ -106,10 +109,19 @@ def source_set(packet: dict, row: dict) -> list[dict]:
             item = items[rank]
             if not re.match(r"^https?://", item.get("url", "")):
                 continue
-            if item["url"] in by_url:
-                by_url[item["url"]]["channels"].append(key)
+            identity = None
+            if screened:
+                identity = identities.get(canonical_url(item["url"])) or identities.get("title:"+headline_key(item["title"]))
+            if item["url"] in by_url or identity:
+                record = by_url.get(item["url"]) or identity
+                if not screened or key not in record["channels"]:
+                    record["channels"].append(key)
             else:
                 by_url[item["url"]] = dict(item, channels=[key], id=f"S{len(by_url)+1}")
+                record = by_url[item["url"]]
+            if screened:
+                identities[canonical_url(item["url"])] = record
+                identities["title:"+headline_key(item["title"])] = record
     return list(by_url.values())
 
 
@@ -221,6 +233,7 @@ def generate(packet: dict, client=None, max_calls=MAX_CALLS) -> list[dict]:
         sources = source_set(packet, row)
         record = {"pair": row["pair"], "date": row["date"], "prompt_version": PROMPT_VERSION,
                   "validator_version": VALIDATOR_VERSION,
+                  "source_policy": packet.get("source_policy", "legacy"),
                   "published": False, "sources": sources, "raw": None, "errors": [],
                   "model": getattr(client, "model", None), "attempted": False, "usage": {}}
         records.append(record)

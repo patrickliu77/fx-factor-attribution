@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 
 from ..narrative import retrieve as R
-from ..narrative.relevance import exclusion_reason
+from ..narrative.news_quality import REVISION, screen
 from . import headlines as HL
 from .summary import latest_row
 
@@ -61,35 +61,25 @@ def collect(snapshot, fetcher=None, clock=None) -> dict:
     jobs = {}
     for row in rows:
         pair = row["pair"]
-        jobs["currency:"+pair] = (HL.DISPLAY_PAIR_TERMS.get(pair, pair), pair)
+        jobs["currency:"+pair] = HL.DISPLAY_PAIR_TERMS.get(pair, pair)
         for factor in row["leading"]:
             key = factor["factor"]
             if key in FACTOR_TERMS:
-                jobs["factor:"+key] = (FACTOR_TERMS[key], None)
+                jobs["factor:"+key] = FACTOR_TERMS[key]
 
     def pull(job):
-        key, (terms, pair) = job
+        key, terms = job
         query = f"{terms} when:3d"
         try:
             candidates = R.parse_feed((fetcher or HL._fetch)(query), max_items=12, phase="context")
             observed = clock().isoformat(timespec="seconds")
-            accepted, excluded = [], []
-            for item in candidates:
-                reason = exclusion_reason(item["title"], pair)
-                if not item.get("published") or not lo <= item["published"] <= hi:
-                    reason = reason or "outside_current_date_window_or_undated"
-                record = dict(item, observed_at=observed)
-                if reason:
-                    excluded.append(dict(record, reason=reason))
-                else:
-                    accepted.append(record)
-            accepted.sort(key=lambda i: i["published"], reverse=True)
-            return key, {"query": query, "items": accepted, "excluded": excluded,
+            return key, {"query": query, **screen(candidates, key, lo, hi, observed),
                          "observed_at": observed, "error": None}
         except Exception as exc:
             # Exception type suffices, avoiding provider URLs or credentials in logs.
-            return key, {"query": query, "items": [], "excluded": [],
-                         "observed_at": clock().isoformat(timespec="seconds"),
+            observed = clock().isoformat(timespec="seconds")
+            return key, {"query": query, **screen([], key, lo, hi, observed),
+                         "observed_at": observed,
                          "error": type(exc).__name__}
 
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -102,6 +92,7 @@ def collect(snapshot, fetcher=None, clock=None) -> dict:
             "data_version": snapshot.data_version,
             "fetched_at": clock().isoformat(timespec="seconds"),
             "publication_precision": "day", "news_window": {"start": lo, "end": hi},
+            "source_policy": REVISION,
             "mode": "retrieved_context_without_causal_claim", "pairs": rows, "slates": slates}
 
 

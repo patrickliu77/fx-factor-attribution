@@ -10,7 +10,7 @@ from fxdash.web.store import Snapshot
 from test_web import _write_fixture
 
 RSS = b'''<rss><channel>
-<item><title>Dollar slips as yields fall - Example</title><link>https://example.com/dollar</link>
+<item><title>US dollar slips as carry trade unwinds - Example</title><link>https://example.com/dollar</link>
 <pubDate>Fri, 04 Sep 2026 10:00:00 GMT</pubDate><source url="https://example.com">Example</source></item>
 <item><title>Norges Bank Buys 92% Stake in Spanish Shopping Center Portfolio</title><link>https://example.com/fund</link>
 <pubDate>Fri, 04 Sep 2026 10:00:00 GMT</pubDate></item>
@@ -25,6 +25,7 @@ def test_narrow_relevance_filter_keeps_policy_and_currency_counterevidence():
     assert exclusion_reason("Norges Bank hikes policy rate despite fund losses") is None
     assert exclusion_reason("Krone falls as sovereign wealth fund shifts flows", "USDNOK") is None
     assert exclusion_reason("Oil slumps despite higher dollar") is None
+    assert exclusion_reason("Norges Bank sovereign wealth fund cuts US Treasury holdings", "USDNOK") is None
 
 
 def test_headline_exclusions_are_auditable():
@@ -51,9 +52,13 @@ def test_both_channels_are_queried_once_and_dates_are_honest(tmp_path):
     assert out["as_of"] == "2026-01-07"  # old model data is never relabelled today
     assert out["fetched_at"].startswith("2026-09-05")
     assert out["publication_precision"] == "day"
-    for slate in out["slates"].values():
-        assert [i["url"] for i in slate["items"]] == ["https://example.com/dollar"]
+    assert out["source_policy"] == "driver-sources-1"
+    for key, slate in out["slates"].items():
+        eligible = key == "factor:CARRY_LOO"
+        assert [i["url"] for i in slate["items"]] == (["https://example.com/dollar"] if eligible else [])
+        assert len(slate["review"]) == (0 if eligible else 1)
         assert len(slate["excluded"]) == 2
+        assert slate["coverage"]["candidates"] == 3
 
 
 def test_failed_fetch_has_no_fabricated_reporting(tmp_path):
@@ -63,6 +68,7 @@ def test_failed_fetch_has_no_fabricated_reporting(tmp_path):
     out = drivers.collect(Snapshot(tmp_path), fetcher=fail)
     assert all(s["error"] == "TimeoutError" and not s["items"] for s in out["slates"].values())
     assert "secret" not in str(out)
+    assert all(not s["review"] and s["coverage"]["candidates"] == 0 for s in out["slates"].values())
 
 
 def test_preview_numbers_cutoffs_and_freshness(tmp_path):
@@ -84,6 +90,6 @@ def test_preview_numbers_cutoffs_and_freshness(tmp_path):
 
 def test_preview_refuses_sources_observed_after_cutoff(tmp_path):
     out, _ = packet(tmp_path)
-    next(iter(out["slates"].values()))["items"][0]["observed_at"] = "2026-09-06T12:00:00+00:00"
+    out["slates"]["factor:CARRY_LOO"]["items"][0]["observed_at"] = "2026-09-06T12:00:00+00:00"
     with pytest.raises(ValueError, match="cutoff"):
         build_preview(out)

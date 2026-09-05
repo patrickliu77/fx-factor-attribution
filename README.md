@@ -124,11 +124,21 @@ Daily headlines are fetched independently of the narrative trigger. The public
 site includes the headlines collected at build time.
 
 The News page also pairs each currency's two largest factor contributions with
-factor-related searches and a separate currency-context search. These are reading
-leads with source links. Explicit quote pages and
-unrelated sovereign-fund investment stories are excluded with recorded reasons.
-Publication dates have day precision; retrieval timestamps record when the
-application actually observed the reporting.
+factor-related searches and a separate currency-context search. Title and snippet
+rules separate retained links, candidates needing review, and exclusions. The
+review list stays readable but is left out of new generated briefing notes.
+Explicit quote pages, reference pages and unrelated uses of the name Vix are
+excluded with reasons. Fund stories mentioning government bonds or currency
+policy remain eligible for topic screening.
+
+Matching links and normalised headlines are merged. Shortlists rotate publishers,
+choosing newer reports first within each publisher; this can surface an older
+report ahead of another outlet's latest item. Other retained links stay expandable.
+Coverage counts use RSS publisher labels and do not establish independent
+confirmation. Rewritten copies and semantic errors can survive these rules.
+Publication dates have day precision; retrieval timestamps record when the app
+actually observed the reporting. The `driver-sources-1` policy applies to newly
+collected driver packets. Existing briefing inputs and citation ids stay unchanged.
 
 ## Morning text edition
 

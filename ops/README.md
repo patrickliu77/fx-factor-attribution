@@ -321,6 +321,24 @@ static snapshot cannot reveal failures that happened after it was built.
 pushes and stale builds through browser-only fixtures. It never writes test editions
 to real outputs. Run it with the same browser environment as `audit_frontend.mjs`.
 
+New driver searches carry `source_policy=driver-sources-1`. Each search retains
+its candidates in `items`, `review` or `excluded`, with reason codes and duplicate
+references. Counts reconcile across those lists. Publisher rotation affects the
+three-link shortlist; RSS publisher metadata does not prove independent reporting.
+Only retained links enter new briefing prompts. Legacy packets keep their previous
+source ordering and ids, and existing drafts and editions are left untouched.
+
+For an offline replay, set `PYTHONPATH=src` and run
+`python ops/audit_news_quality.py site/api/news.json TEMP_DIR/news-audit.json`.
+Replace `TEMP_DIR` with an artifact directory outside the repository. The report
+keeps the original observation time and input hash, and labels its separate audit
+time. It makes no requests and never updates the input snapshot. Review the actual
+titles alongside the counts; a retained item still needs interpretation.
+`ops/audit_news_quality.mjs` checks bilingual review and exclusion lists, duplicate
+links, expandable retained items, safe rendering and mobile width using browser-only
+fixtures. It accepts the same base URL and artifact-directory arguments as the
+other browser scripts. No audit command generates a new narrative or morning edition.
+
 Three heartbeats, none a substitute for another. The pipeline's
 `last_live_success` and the narrative layer's `last_run` say whether those
 jobs ran; `build.json`'s `built_at` says whether the page was rebuilt. If the

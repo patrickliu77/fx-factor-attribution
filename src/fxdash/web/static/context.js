@@ -3,19 +3,49 @@ const copy = (en, zh) => getLang() === 'zh' ? zh : en;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const bp = x => x == null ? 'n/a' : `${x>0?'+':''}${x.toFixed(1)} bp`;
 const factorName = f => t('factor.'+f) === 'factor.'+f ? f : t('factor.'+f);
+const link = (url, text) => `<a href="${esc(/^https?:\/\//i.test(url) ? url : '#')}" target="_blank" rel="noopener">${text}</a>`;
+const sourceLink = i => link(i.url, `<span>${esc(i.title)}</span><small>${esc(i.source || copy('Publisher unlabelled','未标注来源'))} · ${esc(i.published)} ↗</small>`);
+const reasonText = reason => ({
+  missing_title:copy('Missing title.','缺少标题。'),
+  invalid_article_url:copy('Article link is unavailable or invalid.','报道链接缺失或无效。'),
+  profile_or_reference_page:copy('Profile, quote or reference page.','资料、报价或索引页面。'),
+  quote_or_chart_page:copy('Quote or live-chart page.','报价或实时图表页面。'),
+  sovereign_fund_investment_without_fx_or_policy_context:copy('Fund investment with no currency, rate or policy cue in the title.','基金投资标题未提及汇率、利率或政策背景。'),
+  vix_name_collision:copy('The title refers to an unrelated use of the name Vix.','标题中的 Vix 指向其他同名主题。'),
+  different_volatility_market:copy('Crypto volatility; its relevance to equity VIX needs checking.','加密资产波动率，与股票 VIX 的关联待核对。'),
+  generic_topic_heading:copy('Topic heading with no specific event.','主题名称，未给出具体事件。'),
+  topic_not_clear_from_title_or_snippet:copy('The title and snippet do not clearly identify this search topic.','标题和摘要未清楚提及本次检索的主题。'),
+  metal_market_context_not_clear:copy('A metal-market context is unclear from the title and snippet.','标题和摘要中的金属市场背景不明确。'),
+  outside_current_date_window_or_undated:copy('Undated or outside the retrieval date window.','缺少日期或超出本次检索日期范围。'),
+  duplicate_url_or_headline:copy('Duplicate link or matching normalised headline.','链接重复或规范化后的标题相同。'),
+}[reason] || copy('Unrecognised screening reason; inspect the saved record.','筛选原因尚无对应说明，请查阅保存记录。'));
+
+function auditHtml(items, kind) {
+  if (!items?.length) return '';
+  const review = kind === 'review';
+  return `<details class="context-audit context-${kind}"><summary>${review ? copy('Needs review','待核对') : copy('Excluded candidates','已排除的候选')} (${items.length})</summary>
+    ${review ? `<p class="hint">${copy('These links are kept for reading and left out of new generated briefing notes.','保留这些链接供阅读，不送入新晨报的解读生成。')}</p>` : ''}
+    ${items.map(i=>`${sourceLink(i)}<p class="hint">${esc(reasonText(i.reason))}</p>${i.duplicate_of ? link(i.duplicate_of, esc(copy('Retained or review copy ↗','查看保留或待核对版本 ↗'))) : ''}`).join('')}</details>`;
+}
 
 function slateHtml(slate) {
   if (!slate) return `<p class="hint">${copy('No mapped search for this factor.','这个因子尚未配置新闻检索。')}</p>`;
   const items = slate.items || [];
-  return `<div class="context-slate">${items.slice(0,3).map(i=>`<a href="${esc(/^https?:\/\//i.test(i.url) ? i.url : '#')}" target="_blank" rel="noopener"><span>${esc(i.title)}</span><small>${esc(i.source)} · ${esc(i.published)} ↗</small></a>`).join('') || `<p class="hint">${slate.error ? copy('Feed unavailable.','新闻源暂不可用。') : copy('No retained reporting in this search.','本次检索没有保留的报道。')}</p>`}
+  const c = slate.coverage;
+  const coverage = c && !slate.error ? `<p class="hint context-coverage">${copy(
+    `${c.candidates} candidates · ${c.retained} retained · ${c.review} need review · ${c.excluded} excluded. Shortlist: ${c.displayed} links, ${c.displayed_publishers} labelled publishers.`,
+    `${c.candidates} 条候选 · ${c.retained} 条保留 · ${c.review} 条待核对 · ${c.excluded} 条排除。优先展示 ${c.displayed} 条，标注来源 ${c.displayed_publishers} 个。`)}${c.missing_publisher_metadata ? ' '+copy(`${c.missing_publisher_metadata} shortlisted links have no publisher label.`,`${c.missing_publisher_metadata} 条优先展示的链接未标注来源。`) : ''}</p>` : '';
+  return `<div class="context-slate">${coverage}${items.slice(0,3).map(sourceLink).join('') || `<p class="hint">${slate.error ? copy('Feed unavailable.','新闻源暂不可用。') : copy('No retained reporting in this search.','本次检索没有保留的报道。')}</p>`}
+    ${items.length>3 ? `<details class="context-audit context-more"><summary>${copy('Other retained links','其余保留链接')} (${items.length-3})</summary>${items.slice(3).map(sourceLink).join('')}</details>` : ''}
     <p class="hint">${copy('Retrieved','抓取于')} ${esc(slate.observed_at)} · ${copy('Google News redirect links','链接经 Google News 跳转')}</p>
-    ${slate.excluded?.length ? `<details class="context-audit"><summary>${copy('Excluded candidates','排除的候选报道')} (${slate.excluded.length})</summary>${slate.excluded.map(i=>`<p class="hint">${esc(i.title)}<br>${esc(i.reason)}</p>`).join('')}</details>` : ''}</div>`;
+    ${auditHtml(slate.review,'review')}${auditHtml(slate.excluded,'excluded')}</div>`;
 }
 
 export function driversHtml(data) {
   if (!data?.pairs?.length) return '';
   return `<section class="driver-context col gap14"><h2 class="sec">${copy('Leading factors and current news','主要因子与当前新闻')}</h2>
     <p class="stack-note">${esc(data.as_of)} · OLS 126 · ${copy('Daily log-return bp. Factor searches and currency searches are shown separately. Headlines provide reading context; their relevance to the observed move still needs checking.','单日对数收益 bp。因子检索与货币检索分开呈现。标题提供阅读线索，报道与这次波动的关联仍需核实。')}</p>
+    ${data.source_policy ? `<p class="hint context-policy">${copy('Screening uses titles and snippets. Shortlists rotate labelled publishers, with newer reports first within each publisher. Matching links or headlines are merged; paraphrased copies can remain. Publisher labels come from RSS and do not establish independent confirmation.','筛选依据标题和摘要。优先展示列表轮流选取不同标注来源，每个来源内优先较新报道。相同链接或标题会合并，改写转载仍可能重复。来源标注取自 RSS，数量不代表独立证实。')}</p>` : ''}
     ${data.pairs.map(row=>`<details class="driver-pair"><summary><span>${esc(row.pair.replace('USD','USD/'))}</span><span>${bp(row.y == null ? null : row.y*1e4)}${row.provisional ? ' · '+esc(t('quote.provisional')) : ''}</span><small>${row.leading.map(f=>`${esc(factorName(f.factor))} ${bp(f.contribution_bp)}`).join(' · ')}</small></summary>
       <p class="hint">${copy('Observation','观测日期')} ${esc(row.date)} · ${copy('Residual','残差')} ${bp(row.residual == null ? null : row.residual*1e4)} · <a href="#/research/${esc(row.pair)}">${copy('Inspect sensitivities','查看敏感度')} ↗</a></p>
       ${row.leading.map(f=>`<h3>${esc(factorName(f.factor))}</h3>${slateHtml(data.slates[f.news_key])}`).join('')}
