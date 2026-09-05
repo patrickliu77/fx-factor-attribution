@@ -111,12 +111,12 @@ export function methodologyFigure(name, lang = 'en') {
     <title id="${id}-title">${escape(c[name][0])}</title><desc id="${id}-desc">${escape(c[name][1])}</desc>
     <style>
       .method-diagram { background:var(--panel,#fff); }
-      .method-diagram text { fill:var(--text,#20243b); font-family:var(--display,'Segoe UI',Arial,sans-serif); }
-      .method-diagram .eyebrow { font-size:15px; letter-spacing:1.3px; fill:var(--mute,#5f6484); }
+      .method-diagram text { fill:var(--text,#20243b); font-family:var(--display,"Outfit","Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif); }
+      .method-diagram .eyebrow { font-family:var(--mono,"IBM Plex Mono",Consolas,"Microsoft YaHei","PingFang SC",ui-monospace,monospace); font-size:15px; letter-spacing:1.3px; fill:var(--mute,#5f6484); }
       .method-diagram .heading { font-size:28px; font-weight:500; }
       .method-diagram .body { font-size:21px; }
       .method-diagram .small { font-size:15px; fill:var(--text-3,#535874); }
-      .method-diagram .mono { font:18px var(--mono,Consolas,monospace); }
+      .method-diagram .mono { font:18px var(--mono,"IBM Plex Mono",Consolas,"Microsoft YaHei","PingFang SC",ui-monospace,monospace); }
       .method-diagram .rule { stroke:var(--line-2,#dfe1eb); stroke-width:1; }
       .method-diagram .wire { stroke:var(--text-3,#535874); stroke-width:1.5; fill:none; }
       .method-diagram .connector { stroke:var(--mute,#8a8fa8); stroke-width:1.2; fill:none; }

@@ -42,8 +42,8 @@
   --chart-grid: rgba(255, 255, 255, 0.06);
   --chart-axis: #5c6079;
 
-  --display: "Outfit", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --display: "Outfit", "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, "Microsoft YaHei", "PingFang SC", ui-monospace, monospace;
 
   --page: 1600px;
   --gut: 48px;

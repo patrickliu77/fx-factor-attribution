@@ -7,12 +7,11 @@
 // side had no way of knowing what it had picked).
 /* global echarts */
 
-const MONO = "IBM Plex Mono, ui-monospace, Consolas, monospace";
-
 export function tokens() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n, f) => (cs.getPropertyValue(n) || "").trim() || f;
   return {
+    mono: v("--mono", "IBM Plex Mono, Consolas, Microsoft YaHei, PingFang SC, ui-monospace, monospace"),
     ink: v("--ink", "#0b0e1a"),
     panel: v("--panel", "#12152a"),
     raise: v("--raise", "#171b32"),
@@ -99,7 +98,7 @@ export function priceOption(data, scale) {
       borderColor: C.line,
       borderWidth: 1,
       padding: [8, 11],
-      textStyle: { color: C.text, fontSize: 12, fontFamily: MONO },
+      textStyle: { color: C.text, fontSize: 12, fontFamily: C.mono },
       formatter: (ps) => {
         const p = ps[0];
         const val = p.data == null ? "n/a" : Number(p.data).toFixed(digits + 1);

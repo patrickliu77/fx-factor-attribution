@@ -30,7 +30,7 @@ export function researchOptions(data, factor) {
   const C = tokens(), last = data.dates.length - 1;
   const base = {
     animation:false,
-    textStyle:{color:C.text,fontFamily:'IBM Plex Mono, monospace'},
+    textStyle:{color:C.text,fontFamily:C.mono},
     grid:{left:64,right:24,top:20,bottom:68,containLabel:false},
     tooltip:{trigger:'axis',backgroundColor:C.raise,borderColor:C.line,textStyle:{color:C.text}},
     xAxis:{type:'category',data:data.dates,boundaryGap:false,axisLabel:{color:C.mute,formatter:s=>s.slice(2)},axisLine:{lineStyle:{color:C.line}}},

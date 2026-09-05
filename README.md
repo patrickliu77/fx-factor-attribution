@@ -161,3 +161,8 @@ and publishing are documented in [ops/README.md](ops/README.md).
 The Methodology illustrations are original SVGs. Their shared drawing source is
 [`methodology-figures.js`](src/fxdash/web/static/methodology-figures.js); regenerate
 the standalone files with `node ops/render_methodology_figures.mjs` after an edit.
+The page and illustrations use Outfit for text and IBM Plex Mono for numeric
+labels. Font files are served locally and embedded in the SVG exports, so the
+README images keep the same typefaces. Chinese text uses the same system font
+fallbacks as the website. Font sources and licenses are in
+[`static/fonts/`](src/fxdash/web/static/fonts/README.md).

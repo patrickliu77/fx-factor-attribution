@@ -85,8 +85,11 @@ def test_build_writes_assets_every_request_and_the_manifest(site_app, tmp_path):
 
     for name in ("index.html", "app.js", "i18n.js", "charts.js", "methodology.js",
                  "methodology-figures.js", "research.js",
-                 "style.css", "vendor/echarts.min.js", ".nojekyll", "build.json"):
+                 "style.css", "fonts.css", "vendor/echarts.min.js", ".nojekyll", "build.json"):
         assert (out / name).exists(), name
+
+    for font in (STATIC_DIR / "fonts").iterdir():
+        assert (out / "fonts" / font.name).read_bytes() == font.read_bytes()
 
     # Full-size links on Methodology must work under the Pages project path too.
     for figure in ("pipeline", "timeline", "lasso"):
