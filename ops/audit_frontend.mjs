@@ -69,6 +69,17 @@ try {
     await page.goto(base+'/#/news');
     await page.locator('.driver-pair').first().waitFor({timeout:60000});
     assert.equal(await page.locator('.driver-pair').count(),6);
+    if (await page.locator('.brief-preview').count()) {
+      const brief = page.locator('.brief-preview');
+      assert.ok((await brief.innerText()).includes(lang==='en' ? 'Attribution through' : '归因截至'));
+      for (const detail of await brief.locator('.brief-note').all()) {
+        await detail.locator('summary').click();
+        assert.equal(await detail.locator('.brief-watch dd').count(),3);
+        assert.ok(await detail.locator('blockquote').count()>0);
+        assert.ok((await detail.innerText()).includes(lang==='en' ? 'have not been confirmed' : '尚未得到确认'));
+      }
+      await brief.screenshot({path:path.join(out,`briefing-${lang}-${width}.png`)});
+    }
     await page.locator('.driver-pair summary').first().click();
     await page.screenshot({path:path.join(out,`news-${lang}-${width}.png`),fullPage:true});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

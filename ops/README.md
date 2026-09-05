@@ -254,9 +254,52 @@ To inspect the first text-briefing draft, run `python -m fxdash.narrative.briefi
 with `PYTHONPATH=src`. It writes `outputs/briefing/preview.json`, with a copy of
 the news evidence. It never changes the attribution or narrative status files.
 The page hides a preview when its attribution data version no longer matches.
-The preview has no scheduler registration. A 09:00 America/New_York edition still
-needs pre-cutoff collection, late/missing-input handling and editorial acceptance.
-Do not retrospectively label a fresh RSS search as a morning's available news.
+The deterministic preview command remains available without model calls. The
+morning workflow below supersedes it on the page when a current driver preview
+or a dated edition exists. Fresh RSS searches are never labelled as historical
+morning evidence.
+
+### Morning text briefing
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m fxdash.narrative.morning --mode preview
+python -m fxdash.narrative.morning_dispatch --check
+powershell -File ops/register_briefing_task.ps1 -WhatIf
+powershell -File ops/register_briefing_task.ps1
+```
+
+The preview explicitly uses the current clock. It writes a separate validation
+archive and `outputs/briefing/driver-preview.json`; a data-version or prompt-version
+change hides an old preview. Never pass a simulated historical clock to the real
+output directory. Automated tests inject clocks only with isolated temporary data.
+
+`fxdash-briefing` uses a five-minute weekday trigger in the bounded 12:50..15:00 UTC
+window. Python's `America/New_York` gate handles both daylight saving offsets:
+08:50..08:59 collects, 09:00..09:59 publishes, all other times exit without network
+or output writes. Install `tzdata` on Windows if the interpreter has no IANA time
+zone database. Keep the user signed in. WakeToRun cannot start a powered-off host.
+
+Each day has its own `outputs/briefing/days/YYYY-MM-DD/` directory. `prepare.claim`
+limits collection and model spending to one attempt. `packet.json` is saved before
+generation; `draft.json` retains input hash, raw replies, prompt version, model,
+usage and failed checks. At most three model calls are made, with a 45-second
+timeout each and no generation retries. A terminated preparation remains claimed;
+the 09:00 step uses the available packet and falls back to numbers if necessary.
+
+`edition.json` is frozen once. It requires the preceding FX weekday's attribution
+and this morning's input observations at or before 09:00. Provisional records are
+labelled. Weekdays follow the FX calendar, not US equity exchange holidays.
+Late/missing inputs produce an availability notice instead of a late news backfill.
+Rejected model text is omitted. OS locks prevent simultaneous workers; the shared
+publisher also holds a named mutex across building and pushing the site.
+
+`publish.json` is a separate push receipt. Failed publication is retried every
+five minutes until 10:00, using the same edition. Success means the Git push
+completed; GitHub Pages deployment can finish later. Evening publication can
+pick up an edition if the morning push failed. Logs go to `outputs/logs/briefing.log`.
+Existing pipeline and residual-narrative status files are untouched. The first
+natural weekday run is still an operational acceptance item. No audio is generated.
 
 Three heartbeats, none a substitute for another. The pipeline's
 `last_live_success` and the narrative layer's `last_run` say whether those

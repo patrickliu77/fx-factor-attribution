@@ -26,9 +26,29 @@ export function driversHtml(data) {
 export function briefingHtml(brief) {
   if (!brief?.available) return '';
   const lang = getLang();
-  return `<section class="brief-preview col gap14"><h2 class="sec">${copy('Text briefing preview','文字简报预览')}</h2>
+  const formal = brief.mode === 'edition';
+  const warningText = w => ({
+    inputs_after_cutoff:copy('Inputs arrived after the cutoff.','输入晚于截止时间。'),
+    inputs_not_from_this_morning:copy('No input packet captured this morning.','没有本日早晨采集的输入。'),
+    previous_session_attribution_unavailable:copy('Previous-session attribution was unavailable at collection.','采集时未收到上一交易日归因。'),
+    invalid_packet:copy('A usable pre-cutoff packet is unavailable.','缺少截止前的有效输入。'),
+    checked_draft_unavailable:copy('A checked draft was unavailable at publication.','发布时尚无通过检查的稿件。'),
+    'Provisional attribution is included and labelled.':copy('Provisional figures are marked.','待确认数字已标注。'),
+    'No driver commentary passed verification; saved figures remain available.':copy('No driver note passed all checks; the saved figures remain available.','没有因子解读通过全部检查，保留已保存数字。'),
+  }[w] || w);
+  const notes = (brief.notes || []).map(item=>{
+    const note=item.note[lang], checks=item.checks[lang], d=item.definition;
+    return `<details class="brief-note"><summary>${esc(item.pair.replace('USD','USD/'))} · ${esc(factorName(item.note.factor))}</summary>
+      ${d ? `<p class="stack-note">${copy('Target excluded from this factor','该因子排除本货币对')}：${esc(d.excluded_target)}. ${d.members ? esc(d.members.join(', ')) : `${copy('Low-yield group','低息组')} ${esc(d.low.join(', '))}；${copy('high-yield group','高息组')} ${esc(d.high.join(', '))}`}</p>` : ''}
+      <p>${esc(note.event)}</p><p class="hint">${copy('Evidence-checking plan, written in code. These observations have not been confirmed.','代码生成的核验路径，下列观测尚未得到确认。')}</p><dl class="brief-watch"><dt>${copy('Condition to check','待核对的条件')}</dt><dd>${esc(checks.condition)}</dd><dt>${copy('Evidence to seek','需要寻找的证据')}</dt><dd>${esc(checks.supports)}</dd><dt>${copy('Counterevidence','削弱这条解释的观测')}</dt><dd>${esc(checks.weakens)}</dd></dl>
+      <div class="context-slate">${item.note.evidence.map(e=>{const s=item.sources.find(s=>s.id===e.source_id);return s ? `<a href="${esc(/^https?:\/\//i.test(s.url) ? s.url : '#')}" target="_blank" rel="noopener">${esc(s.title)}<small>${esc(s.source)} · ${esc(s.published)} ↗</small></a><blockquote>${esc(e.quote)}</blockquote>` : '';}).join('')}</div>
+    </details>`;
+  }).join('');
+  return `<section class="brief-preview col gap14" data-briefing-state="${esc(brief.state || 'preview')}"><h2 class="sec">${formal ? copy('Morning briefing','文字晨报') : copy('Text briefing preview','文字简报预览')} ${esc(brief.date || '')}</h2>
     <p class="hint">${copy('Attribution through','归因截至')} ${esc(brief.attribution_as_of)} · ${copy('News observed by','新闻抓取截至')} ${esc(brief.news_observed_by)}</p>
     <p>${esc(brief.text?.[lang] || brief.text?.en || '')}</p>
-    <p class="stack-note">${copy('A rules-based draft from saved figures, with source context below. This preview is not a scheduled 09:00 ET edition. Source dates have day precision.','这份数据摘要使用已保存数字，下方提供新闻阅读线索。预览尚未接入美东 09:00 定时发布，新闻发布日期仅精确到日。')}</p>
-    ${brief.warnings?.map(w=>`<p class="hint">${esc(w)}</p>`).join('') || ''}</section>`;
+    ${brief.late_publication ? `<p class="hint">${copy('This edition was finalized late.','本期延迟生成。')} ${esc(brief.generated_at)}</p>` : ''}
+    <p class="stack-note">${copy('Numbers come from saved attribution. The language model uses retrieved titles and snippets; source and wording checks cannot establish causality or verify every interpretation. Publication dates have day precision.','数字取自已保存归因。语言模型阅读检索标题和摘要，来源与文字规则检查无法证明因果关系，也无法核实所有解释。新闻发布日期仅精确到日。')}</p>
+    ${!formal ? `<p class="hint">${copy('Validation preview, not a historical morning edition.','运行验收预览，不代表历史晨报。')}</p>` : ''}
+    ${brief.warnings?.map(w=>`<p class="hint">${esc(warningText(w))}</p>`).join('') || ''}${notes}</section>`;
 }

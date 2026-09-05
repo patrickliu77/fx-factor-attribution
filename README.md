@@ -7,8 +7,9 @@ reported as a residual, with a news note when it is unusually large.
 
 [Open the dashboard](https://patrickliu77.github.io/fx-factor-attribution/)
 or read the [methodology](https://patrickliu77.github.io/fx-factor-attribution/#/methodology).
-The public site updates each evening and shows when its data and headlines were
-collected. It covers completed trading days.
+Attribution updates each evening. A weekday text edition is prepared for 09:00
+America/New_York. The page labels the attribution date, news retrieval time and
+publication status separately. It covers completed trading days.
 
 ## How it works
 
@@ -124,17 +125,42 @@ site includes the headlines collected at build time.
 
 The News page also pairs each currency's two largest factor contributions with
 factor-related searches and a separate currency-context search. These are reading
-leads with source links, not additional AI explanations. Explicit quote pages and
+leads with source links. Explicit quote pages and
 unrelated sovereign-fund investment stories are excluded with recorded reasons.
 Publication dates have day precision; retrieval timestamps record when the
 application actually observed the reporting.
 
-A text-briefing preview is available through `python -m fxdash.narrative.briefing`.
-It saves its own evidence packet in `outputs/briefing/preview.json` and labels the
-attribution date separately from the news observation cutoff. This first draft
-uses fixed templates and saved numbers. The 09:00 America/New_York edition is not
-scheduled yet; point-in-time news collection and editorial checks come next.
-Audio and multi-agent delivery remain future work.
+## Morning text edition
+
+At 08:50 New York time, the morning job saves the previous session's attribution
+and the news it actually retrieved. It then requests short bilingual notes for
+up to three of the largest currency moves. The notes cite reporting. A separate,
+code-written checklist asks readers to verify event dates, seek independent
+observations and check counterevidence. Numbers and factor definitions are
+printed by code, including each basket's excluded pair.
+
+At 09:00, the job freezes an edition from that saved packet and publishes the
+site. A missing or late packet produces a dated availability notice. If text
+generation fails, the saved numeric summary can still be published. Publication
+retries reuse the frozen edition; they never fetch replacement morning evidence.
+The job follows New York daylight saving time and requires the host to be running
+with its user signed in. GitHub Pages may take a few minutes to deploy the push.
+
+Source ids, exact short excerpts, observation times, bilingual citations, numeric
+claims and wording are checked before a note is used. These checks cannot verify
+every paraphrase or establish causality. The model sees RSS titles and snippets,
+so an event's relevance remains a research question. Raw drafts, failed checks,
+model usage and input hashes stay in a separate briefing archive. Existing
+residual notes and attribution history are left unchanged.
+
+Run `python -m fxdash.narrative.morning --mode preview` for an explicitly labelled
+validation preview. Register the clock gate with
+`powershell -File ops/register_briefing_task.ps1`; the operations manual explains
+the schedule and failure handling. Preview runs are never historical editions.
+The first natural morning run still needs observation. Free-form AI outlooks are
+withheld: validation samples inferred policy effects unsupported by the retrieved
+titles. Richer event evidence and semantic evaluation are needed before that
+section can run automatically. Audio and multi-agent delivery remain future work.
 
 ## Running locally
 

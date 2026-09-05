@@ -102,7 +102,8 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <p>The residual belongs to the currency and trading day. News links provide context for that observation. A story's individual contribution remains unmeasured.</p>
 <p>The daily headline feed is available independently of narrative triggers. The local service caches it for 30 minutes. The public site captures it when the page is built and displays the fetch time.</p>
 <p>A separate panel starts from the two largest factor contributions and retrieves factor-related reporting alongside a currency-context search. It retains exclusion reasons for explicit quote pages and unrelated institutional-name matches. These links are reading leads, with no new causal judgment. News publication dates have day precision; observation timestamps record the actual retrieval time.</p>
-<p>The text-briefing preview separates the attribution date from the news observation cutoff. It uses saved numbers and fixed copy, with no 09:00 ET schedule enabled. A scheduled morning edition needs sources actually observed before its cutoff and a separate check of the text.</p>
+<p>The weekday text edition starts collecting at 08:50 America/New_York and freezes its input packet before 09:00. A separate model call can add source-linked event context for up to three large currency moves. Numbers, leave-one-out definitions and an evidence-checking plan are printed by code. The model reads RSS titles and snippets; its interpretation still needs scrutiny. Free-form AI outlooks remain withheld after validation exposed unsupported policy inferences.</p>
+<p>At 09:00 the job publishes from the saved packet. Missing or late inputs receive a dated notice; rejected commentary leaves a numeric summary. Publication retries reuse the frozen edition. Source ids, exact excerpts, dates, bilingual citations and wording are checked, with failed drafts retained. These checks do not prove causality or verify every paraphrase. Validation previews are labelled separately. The host must be running, and the first natural morning execution remains to be observed.</p>
 </section>
 
 <section class="method__section">
@@ -218,7 +219,8 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <p>残差属于某个货币对的某个交易日。新闻链接提供这一观测的背景，单篇报道对应的贡献没有可用测量。</p>
 <p>每日头条独立于短评触发器。本地服务缓存 30 分钟，公开站在构建时抓取快照，页面标明抓取时间。</p>
 <p>另一个面板从贡献绝对值最大的两个因子出发，分别检索因子报道与货币背景。报价页面、机构同名造成的无关投资报道会留下排除原因。链接提供阅读线索，尚未加入新的因果判断。新闻发布日期仅精确到日，抓取时间记录程序实际看到报道的时刻。</p>
-<p>文字简报预览将归因日期与新闻抓取截至时间分开标注，使用已保存数字和固定文案。目前尚未启用美东 09:00 定时发布。正式晨报需要截止时点前实际获取的来源，并单独检查文字质量。</p>
+<p>工作日文字晨报按 America/New_York 时区运行，08:50 开始采集，在 09:00 前保存输入。独立的模型调用为最多三个大幅波动货币对补充有来源的事件背景。数字、留一法因子定义与核验路径由代码展示。模型阅读 RSS 标题和摘要，解释内容仍需审慎核对。样本验收发现模型会推演缺乏证据的政策影响，自由生成的前瞻段落暂不发布。</p>
+<p>09:00 使用已保存输入发布。缺少输入或输入迟到时展示带日期的说明；解读未通过检查时保留数字摘要。重试发布沿用冻结稿件。来源编号、原文短摘录、时间、双语引用及措辞均有检查，失败稿件保留归档。这些检查无法证明因果关系，也无法核实每一句转述。验收预览单独标注。运行依赖主机在线，首次自然触发仍待观察。</p>
 </section>
 
 <section class="method__section">

@@ -71,6 +71,18 @@ Write-Host "Site   : $Site"
 Write-Host "Remote : $Remote ($Branch)"
 
 # ------------------------------------------------------------------ build
+# The morning dispatcher and evening task share site/. A second writer must not
+# remove files while the first writer is building or committing that directory.
+$mutexBytes = [System.Text.Encoding]::UTF8.GetBytes([System.IO.Path]::GetFullPath($Site).ToLowerInvariant())
+$mutexHash = [System.Security.Cryptography.SHA256]::Create()
+$mutexSuffix = [System.BitConverter]::ToString($mutexHash.ComputeHash($mutexBytes)).Replace("-", "")
+$mutexHash.Dispose()
+$publishMutex = New-Object System.Threading.Mutex($false, ("Local\FXDashPublish-" + $mutexSuffix))
+$ownsPublish = $false
+try {
+    try { $ownsPublish = $publishMutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] { $ownsPublish = $true }
+    if (-not $ownsPublish) { throw "Another publish owns this site directory; retry later." }
 $env:PYTHONPATH = "src"
 $env:PYTHONIOENCODING = "utf-8"
 Push-Location $repo
@@ -113,3 +125,7 @@ if ($PSCmdlet.ShouldProcess("$Remote $Branch", "Force-push the site")) {
 }
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 Write-Host "[$stamp] publish done"
+} finally {
+    if ($ownsPublish) { $publishMutex.ReleaseMutex() }
+    $publishMutex.Dispose()
+}

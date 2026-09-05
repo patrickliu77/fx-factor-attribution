@@ -25,6 +25,7 @@ from . import headlines as HL
 from .comparison import report as comparison_report
 from .drivers import DriverBoard
 from ..narrative.briefing import load_preview
+from ..narrative.morning import read_latest as latest_morning
 from . import newsfeed as NF
 from .market import RANGES as MARKET_RANGES
 from .store import DataStore, clean, clean_list
@@ -472,7 +473,7 @@ def create_app(output_dir: Path | None = None,
             "covered_days": [d.get("date") for d in days],
             "drivers": drivers.snapshot(s),
             "headline_exclusions": live.get("excluded", []),
-            "briefing": load_preview(s.output_dir, s.data_version),
+            "briefing": latest_morning(s.output_dir, s.data_version) or load_preview(s.output_dir, s.data_version),
         }
 
     @api.get("/pairs/{pair}/news")
