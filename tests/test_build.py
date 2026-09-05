@@ -8,6 +8,7 @@ copy of what the live server would have answered.
 
 import json
 import re
+import stat
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -149,3 +150,42 @@ def test_cli_builds_from_explicit_directories(site_app, tmp_path, capsys):
     assert (out / "build.json").exists()
     printed = capsys.readouterr().out
     assert "api files" in printed and printed.isascii()
+
+
+def test_readonly_git_pack_is_removed_on_rebuild(site_app, tmp_path):
+    _, app = site_app
+    out = tmp_path / "site"
+    pack = out / ".git" / "objects" / "pack" / "pack-test.idx"
+    pack.parent.mkdir(parents=True)
+    pack.write_bytes(b"old generated Git metadata")
+    pack.chmod(stat.S_IREAD)
+    B.build(out, app=app)
+    assert not (out / ".git").exists()
+    assert (out / "build.json").exists()
+
+
+def test_build_refuses_input_overlap_before_deleting(site_app, tmp_path):
+    root, app = site_app
+    before = _tree(root)
+    for target in (root, root / "contract", tmp_path, tmp_path / "cache"):
+        with pytest.raises(ValueError, match="overlaps"):
+            B.build(target, app=app)
+    assert _tree(root) == before
+
+
+def test_build_refuses_repository_source_and_broad_roots(site_app):
+    _, app = site_app
+    for target in (B.REPO_ROOT, B.REPO_ROOT.parent, B.REPO_ROOT / "src", STATIC_DIR):
+        with pytest.raises(ValueError, match="protected root|overlaps"):
+            B.build(target, app=app)
+
+
+def test_unreadable_input_keeps_previous_build(tmp_path):
+    out = tmp_path / "site"
+    out.mkdir()
+    marker = out / "previous.txt"
+    marker.write_text("previous build", encoding="utf-8")
+    from fxdash.web.store import SnapshotError
+    with pytest.raises(SnapshotError):
+        B.build(out, output_dir=tmp_path / "missing")
+    assert marker.read_text(encoding="utf-8") == "previous build"

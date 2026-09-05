@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 from datetime import datetime
@@ -29,7 +31,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from ..config import REPO_ROOT, display_path
+from ..config import CACHE_DIR, OUTPUT_DIR, REPO_ROOT, display_path
 from .app import STATIC_DIR, create_app
 from .market import RANGES as MARKET_RANGES
 
@@ -97,13 +99,51 @@ def _source_commit() -> str | None:
         return None
 
 
+def validate_target(out: Path, *, app=None, output_dir=None, cache_dir=None) -> Path:
+    """Refuse roots and any overlap with source code or pipeline inputs."""
+    out = Path(out)
+    if out.is_symlink() or getattr(out, "is_junction", lambda: False)():
+        raise ValueError("build target must not be a link or junction")
+    target = out.resolve()
+    repo = REPO_ROOT.resolve()
+    if target == Path(target.anchor) or target == Path.home().resolve() or repo.is_relative_to(target):
+        raise ValueError("build target is a protected root")
+    store = getattr(getattr(app, "state", None), "store", None)
+    protected = [repo / name for name in ("src", "tests", "ops", "docs", ".git", "data", "outputs")]
+    protected += [Path(output_dir or getattr(store, "output_dir", None) or OUTPUT_DIR),
+                  Path(cache_dir or getattr(store, "cache_dir", None) or CACHE_DIR)]
+    for path in protected:
+        resolved = path.resolve()
+        if target.is_relative_to(resolved) or resolved.is_relative_to(target):
+            raise ValueError("build target overlaps source code or pipeline inputs")
+    return target
+
+
+def remove_build_tree(target: Path) -> None:
+    """Remove a validated generated tree, including Windows read-only Git packs."""
+    target = target.resolve()
+    def on_error(function, name, error_info):
+        error = error_info[1]
+        path = Path(name)
+        if (not isinstance(error, PermissionError) or not path.resolve().is_relative_to(target)
+                or function not in (os.unlink, os.remove, os.rmdir)):
+            raise error
+        # Git pack files are read-only on Windows. Change only the failed entry
+        # inside the validated build tree, then retry that same operation once.
+        path.chmod(path.stat().st_mode | stat.S_IWRITE)
+        function(name)
+    shutil.rmtree(target, onerror=on_error)
+
+
 def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
           now: datetime | None = None) -> dict:
     """Render the site into `out`, which is wiped first. Returns the manifest that
     is also written as build.json."""
-    out = Path(out)
+    out = validate_target(out, app=app, output_dir=output_dir, cache_dir=cache_dir)
+    # Fail an unreadable snapshot before removing the previous generated site.
+    app = app or create_app(output_dir, cache_dir=cache_dir)
     if out.exists():
-        shutil.rmtree(out)
+        remove_build_tree(out)
     out.mkdir(parents=True)
 
     # static assets as they are. build.json is never taken from the source tree:
@@ -116,7 +156,6 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
         shutil.copy2(src, dst)
     (out / ".nojekyll").write_bytes(b"")
 
-    app = app or create_app(output_dir, cache_dir=cache_dir)
     client = TestClient(app)
     meta_response = client.get(API_PREFIX + "/meta")
     meta_response.raise_for_status()

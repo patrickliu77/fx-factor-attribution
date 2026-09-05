@@ -277,6 +277,13 @@ locally under a project-style path and click through it, then push, then clone
 
 Kept here because each one was invisible to the checks that existed at the time.
 
+- **A publish could fail while clearing read-only Git pack files on Windows.**
+  The builder now validates that its target does not overlap repository sources
+  or pipeline inputs. It retries a failed removal only for the specific read-only
+  entry inside that validated build tree. An unreadable input snapshot is also
+  rejected before the previous build is cleared. Covered by rebuild and directory
+  protection tests. 2026-09-05.
+
 - **`serve.ps1` could never start the service.** The guard path
   `src\fxdash\web\app.py` had been written with real control characters (a form
   feed and a bell) where the backslash sequences `\f` and `\a` belong, so
