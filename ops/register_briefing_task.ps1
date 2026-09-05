@@ -28,6 +28,7 @@ $trigger.StartBoundary = [DateTime]::UtcNow.Date.AddHours(12).AddMinutes(50).ToS
 $pattern = New-ScheduledTaskTrigger -Once -At (Get-Date).AddDays(1) `
     -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Minutes 130)
 $trigger.Repetition = $pattern.Repetition
+$trigger.Repetition.StopAtDurationEnd = $false
 $settings = New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 12) -MultipleInstances IgnoreNew
@@ -43,10 +44,12 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register the text briefing clock gate"))
     $registered = [xml](Export-ScheduledTask -TaskName $TaskName)
     $ns = New-Object System.Xml.XmlNamespaceManager($registered.NameTable)
     $ns.AddNamespace("t", "http://schemas.microsoft.com/windows/2004/02/mit/task")
-    foreach ($check in @(@("Interval","PT5M"),@("Duration","PT2H10M"),@("StopOnIdleEnd","false"),@("WakeToRun","true"),@("StartWhenAvailable","true"),@("MultipleInstancesPolicy","IgnoreNew"))) {
+    foreach ($check in @(@("CalendarTrigger/t:Repetition/t:Interval","PT5M"),@("CalendarTrigger/t:Repetition/t:Duration","PT2H10M"),@("CalendarTrigger/t:Repetition/t:StopAtDurationEnd","false"),@("StopOnIdleEnd","false"),@("WakeToRun","true"),@("StartWhenAvailable","true"),@("MultipleInstancesPolicy","IgnoreNew"))) {
         $node = $registered.SelectSingleNode("//t:$($check[0])", $ns)
         if (-not $node -or $node.InnerText -ne $check[1]) { throw "Registration verification failed: $($check[0])" }
     }
-    if ($registered.SelectSingleNode("//t:StartBoundary", $ns).InnerText -notmatch "T12:50:00Z$") { throw "Unexpected UTC anchor" }
+    # Windows may serialize Z as an equivalent explicit local UTC offset.
+    $anchor = [DateTimeOffset]::Parse($registered.SelectSingleNode("//t:StartBoundary", $ns).InnerText)
+    if ($anchor.UtcDateTime.ToString("HH:mm:ss") -ne "12:50:00") { throw "Unexpected UTC anchor" }
     Write-Host "Registered and verified: $TaskName"
 }
