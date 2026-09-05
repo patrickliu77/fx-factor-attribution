@@ -9,6 +9,8 @@ import { t, getLang, setLang } from "./i18n.js";
 import * as CH from "./charts.js";
 import { methodologyHtml } from "./methodology.js";
 import { researchHtml, researchOptions } from "./research.js";
+import { rankedContributions, residualFlag } from "./presentation.js";
+import { driversHtml, briefingHtml } from "./context.js";
 
 /* global echarts */
 
@@ -613,6 +615,8 @@ async function pageNews(view) {
     <div class="headrow"><div class="dateline">${esc(longDate(news.as_of))}</div></div>
     <div class="news">
       <section class="news__main">
+        ${briefingHtml(news.briefing)}
+        ${driversHtml(news.drivers)}
         <div class="col gap20">
           <div>
             <h1 class="page">${esc(t("news.week.title"))}</h1>
@@ -730,7 +734,7 @@ async function pageNews(view) {
     const chg = view.querySelector(`[data-chg="${p}"]`);
     const px = view.querySelector(`[data-px="${p}"]`);
     if (q) {
-      chg.textContent = fmtPct(q.chg_pct);
+      chg.textContent = t("price.daily") + " " + fmtPct(q.chg_pct);
       chg.style.color = dirColor(q.direction);
       px.textContent = fmtLevel(q.last, q.digits);
     }
@@ -748,7 +752,7 @@ function composeRead(daily) {
   if (!movers.length) return t("read.unavailable");
   const top = movers[0];
   const parts = [
-    t("read.lead", { pair: label(top.pair), move: fmtBp(top.y == null ? null : top.y * 1e4) + " bp" }),
+    t("read.lead", { pair: label(top.pair), move: fmtBp1(top.y == null ? null : top.y * 1e4) + " bp (" + t("return.log") + ")" }),
     t("read.split", {
       pair: label(top.pair),
       sys: fmtBp1(top.systematic == null ? null : top.systematic * 1e4),
@@ -795,6 +799,15 @@ function meterOf(row) {
   return total ? [s / total, e / total, r / total] : [null, null, null];
 }
 
+function leadingFactorsHtml(values, scale = 1) {
+  const factors = rankedContributions(values);
+  return `<div class="leading-factors"><span>${esc(t("drivers.leading"))}</span>${
+    factors.length ? factors.map(([key, value]) => {
+      const name = t("factor." + key);
+      return `<span>${esc(name === "factor." + key ? key : name)} <b>${fmtBp1(value * scale)} bp</b></span>`;
+    }).join("") : `<span>${esc(t("drivers.empty"))}</span>`}</div>`;
+}
+
 function cardHtml(pair, row, counts, robust) {
   const q = (state.quotes && state.quotes.items.find((x) => x.pair === pair)) || null;
   const [ms, me, mr] = meterOf(row);
@@ -806,16 +819,19 @@ function cardHtml(pair, row, counts, robust) {
     <div class="card__head">
       <div class="card__name">${esc(label(pair))}</div>
       ${robustnessChips(robust)}
+      ${residualFlag(row) ? `<span class="rchip rchip--residual">${esc(t("residual.large"))}</span>` : ""}
       ${row && row.provisional ? `<span class="tag">${esc(t("quote.provisional"))}</span>` : ""}
       <div class="card__news">${n ? `${n} ${esc(t("fx.stories"))}` : esc(t("fx.nostories"))}</div>
     </div>
     <div class="card__px">
       <div class="card__last">${q ? fmtLevel(q.last, q.digits) : "n/a"}</div>
-      <div class="card__chg" style="color:${dirColor(q ? q.direction : 0)}">${
-        q ? fmtBp(q.chg_bp) + " bp " + fmtPct(q.chg_pct) : ""}</div>
+      <div class="card__chg" style="color:${dirColor(row?.y || 0)}">${
+        fmtBp1(row?.y == null ? null : row.y * 1e4)} bp <small>${esc(t("return.log"))}</small></div>
       <div class="card__arrow" style="color:${dirColor(q ? q.direction : 0)}">${
         q ? arrow(q.direction) : ""}</div>
     </div>
+    <div class="card__basis">${esc(t("price.daily"))} ${q ? fmtPct(q.chg_pct) : "n/a"}</div>
+    ${leadingFactorsHtml(row?.contributions, 1e4)}
     <div class="col gap12">
       <div class="meter">
         <i style="width:${(ms || 0) * 100}%;background:var(--sys)"></i>
@@ -1099,15 +1115,16 @@ async function pageAttribution(view) {
   half = Math.ceil(half / 20) * 20;
 
   const legend = order.map((k) =>
-    `<div><i style="background:var(--b-${k})"></i>${esc(data.bucket_labels[k])}</div>`).join("");
+    `<div><i style="background:var(--b-${k})"></i>${esc(t("bucket."+k) === "bucket."+k ? data.bucket_labels[k] : t("bucket."+k))}</div>`).join("");
 
   const robust = data.robustness || {};
   const body = rows.map((r) => `<div class="attrrow">
       <div class="name"><a href="#/research/${r.pair}">${esc(label(r.pair))} ↗</a></div>
       <div class="num r" style="color:${dirColor(r.y_bp)}">${fmtBp1(r.y_bp)}</div>
       ${divergingRow(r, order, half)}
-      <div class="num r">${fmtBp1(r.residual_bp)}</div>
+      <div class="num r attrresidual" data-label="${esc(t("res"))}">${fmtBp1(r.residual_bp)}</div>
       <div class="rcell">${robustnessChips(robust[r.pair]) || '<span class="hint">n/a</span>'}</div>
+      ${leadingFactorsHtml(r.contributions_bp)}
     </div>`).join("");
 
   const m = data.matrix;
@@ -1145,27 +1162,28 @@ async function pageAttribution(view) {
           }).join("")).join("")}
       </div>
     </div>`).join("") : `<p class="empty">${esc(t("attr.nomatrix"))}</p>`;
+  const matrixCards = groups.map(g=>`<details class="matrix-card"><summary>${esc(g.date)} · ${Object.keys(g.residuals || {}).map(p=>esc(label(p))).join(', ')}</summary>
+    ${Object.entries(g.residuals || {}).map(([p,r])=>`<p class="hint">${esc(label(p))} ${esc(t("attr.dayresidual"))} ${fmtBp1(r.residual_bp)} bp · z ${r.residual_z == null ? 'n/a' : r.residual_z.toFixed(2)}</p>`).join('')}
+    ${g.rows.map(r=>`<a href="${esc(/^https?:\/\//i.test(r.url) ? r.url : '#')}" target="_blank" rel="noopener">${esc(r.title)}<small>${esc(r.source || '')} · ${(r.cited_pairs || []).map(p=>esc(label(p))).join(', ')} ↗</small></a>`).join('')}</details>`).join('');
 
-  view.innerHTML = `
-    <div class="headrow">
+  view.innerHTML = `<article class="attribution-page">
+    <div class="attr-intro">
+      <h1 class="page">${esc(t("attr.title"))}</h1>
       <div class="dateline">${esc(t("attr.period", {
-        start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))}</div>
-      <div class="ctlrow">
-        ${controls()}
-        <a class="iconbtn" href="#/methodology" title="${esc(t("attr.methodology"))}"
-          aria-label="${esc(t("attr.methodology"))}">ⓘ</a>
-      </div>
+        start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))} · ${esc(t("return.log"))} bp</div>
     </div>
-    <div class="col gap40">
-      <div>
-        <h1 class="page">${esc(t("attr.title"))}</h1>
-        <p class="lede">${esc(t("attr.blurb"))}</p>
-      </div>
+    <div class="col gap24">
       <div class="ctlrow"><span class="lbl">${esc(t("attr.horizon"))}</span>
         <div class="ctl" id="periodctl">${[1,5,21].map(d => `<button type="button" data-days="${d}" aria-pressed="${state.period === d}">${esc(t("period."+d))}</button>`).join("")}</div>
       </div>
+      <div class="ctlrow attr-options">${controls()}
+        <a class="method-link" href="#/methodology">${esc(t("attr.methodology"))} ↗</a>
+      </div>
+      <div class="attr-notes"><details><summary>${esc(t("attr.reading"))}</summary>
+        <p class="stack-note">${esc(t("attr.blurb"))} ${esc(t("attr.basis"))}</p>
+      </details>${rows.some(r=>r.contains_provisional) ? `<span class="hint">${esc(t("attr.provisional"))}</span>` : ""}</div>
       <div class="legend">${legend}</div>
-      <p class="stack-note">${esc(t("attr.basis"))}${rows.some(r=>r.contains_provisional) ? " " + esc(t("attr.provisional")) : ""}</p>
+      <div class="hint attr-badge-basis">${esc(t("attr.robust"))}</div>
       <div class="table-scroll" tabindex="0" role="region" aria-label="${esc(t("attr.title"))}"><div class="col attrtable">
         <div class="attrhead"><div>${esc(t("attr.pair"))}</div>
           <div class="r">${esc(t("attr.move"))}</div>
@@ -1180,19 +1198,23 @@ async function pageAttribution(view) {
       <div class="col gap16">
         <div class="between">
           <h2 class="sec">${esc(t("attr.matrix"))}</h2>
-          <div class="hint">${esc(m.note)}</div>
+          <div class="hint">${esc(t("attr.matrixnote"))}</div>
         </div>
         <div class="matrix-scroll" tabindex="0" role="region" aria-label="${esc(t("attr.matrix"))}">${matrixHtml}</div>
+        <div class="matrix-mobile">${matrixCards || `<p class="empty">${esc(t("attr.nomatrix"))}</p>`}</div>
       </div>
-    </div>`;
+    </div></article>`;
   bindControls(view);
   view.querySelectorAll("#periodctl button").forEach(b=>b.onclick=()=>{state.period=Number(b.dataset.days);render();});
 }
 
 async function pageResearch(view, pair) {
   if (!state.meta.pairs.includes(pair)) throw new Error("Unknown currency pair");
-  const data = await api(`/pairs/${pair}/series?window=${state.window}&model=${state.model}&observations=252`);
-  view.innerHTML = researchHtml(data, label(pair), controls());
+  const [data, comparison] = await Promise.all([
+    api(`/pairs/${pair}/series?window=${state.window}&model=${state.model}&observations=252`),
+    api(`/research/comparison?window=${state.window}`).catch(() => null),
+  ]);
+  view.innerHTML = researchHtml(data, label(pair), controls(), comparison);
   bindControls(view);
   if (!data.dates.length) return;
   const draw = () => {

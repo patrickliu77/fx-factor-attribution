@@ -37,6 +37,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from ..narrative import retrieve as R
+from ..narrative.relevance import exclusion_reason
 from .newsfeed import similar_titles, story_kind, title_tokens
 
 log = logging.getLogger(__name__)
@@ -107,28 +108,32 @@ class HeadlineBoard:
         self._stamp = 0.0
 
     # ------------------------------------------------------------------- fetch
-    def _pull_pair(self, pair: str) -> tuple[str, list[dict], str | None]:
+    def _pull_pair(self, pair: str) -> tuple[str, list[dict], str | None, list[dict]]:
         query = (f"{DISPLAY_PAIR_TERMS.get(pair, R.PAIR_TERMS.get(pair, pair))}"
                  f" {QUERY_RECENCY}")
         fetch_fn = self._fetcher or _fetch
         try:
             items = R.parse_feed(fetch_fn(query), max_items=PER_PAIR + 2, phase="live")
-            items = [i for i in items if not JUNK_TITLE_RE.search(i["title"])]
+            excluded = [dict(i, pair=pair, reason=exclusion_reason(i["title"], pair))
+                        for i in items if exclusion_reason(i["title"], pair)]
+            items = [i for i in items if not exclusion_reason(i["title"], pair)]
             for item in items:
                 # display-layer content classification (newsfeed.story_kind):
                 # events go to the main list, opinion pieces to the collapsed
                 # section. Label only, drop nothing here
                 item["kind"] = story_kind(item["title"])
-            return pair, items[:PER_PAIR], None
+            return pair, items[:PER_PAIR], None, excluded
         except Exception as exc:
-            return pair, [], f"{pair}: {type(exc).__name__}: {exc}"
+            return pair, [], f"{pair}: {type(exc).__name__}: {exc}", []
 
     def _refresh(self, pairs: list[str]) -> dict:
         errors: list[str] = []
+        excluded: list[dict] = []
         merged: dict[str, dict] = {}
         order: list[str] = []
         with ThreadPoolExecutor(max_workers=len(pairs) or 1) as pool:
-            for pair, items, err in pool.map(self._pull_pair, pairs):
+            for pair, items, err, rejected in pool.map(self._pull_pair, pairs):
+                excluded.extend(rejected)
                 if err:
                     errors.append(err)
                 for item in items:
@@ -169,13 +174,14 @@ class HeadlineBoard:
             "items": fair_slice(items, pairs),
             "all_items": items,
             "errors": errors,
+            "excluded": excluded,
             "provider": "google_news_rss",
         }
 
     # -------------------------------------------------------------------- read
     def snapshot(self, pairs: list[str]) -> dict:
         with self._lock:
-            fresh = self._cached is not None and (
+            fresh = self._cached is not None and self._stamp > 0 and (
                 time.monotonic() - self._stamp) < self.ttl_s
             if fresh:
                 return self._cached

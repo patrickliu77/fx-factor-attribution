@@ -83,6 +83,7 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <p>OLS at 126 days is the default for the FX page and the news trigger. The agreement badge compares its three contribution groups with Ridge and with the OLS refit after Lasso selection. For each comparison, the absolute differences are added and divided by the pair's median absolute OLS residual over the preceding 252 trading records.</p>
 <p>A distance state starts after two consecutive days above the pair's trailing 95th percentile and ends after two consecutive days back below the threshold. Ridge divergence and Lasso reselection can appear together. Lasso abstention is shown separately with the length of the current run; those dates are excluded from the Lasso distance quantile sample. Insufficient history is reported as unavailable.</p>
 <p>Agreement describes sensitivity to the estimator. A stable allocation can still omit relevant variables. The badge leaves the system health colour unchanged.</p>
+<p>The research page compares saved OLS, Ridge and post-Lasso results on dates that are final and available for all three. It shows residual MAE and RMSE, absolute factor-allocation differences from OLS, and Lasso selection changes for the latest 252 shared observations and full shared history. Smaller residuals indicate closer reconstruction on those dates. Realised factors and revised historical data enter this comparison, so it does not establish forecast performance. Lasso also uses a wider factor menu.</p>
 <details class="method__detail"><summary>PCA and model health</summary>
 <p>Rolling PCA tracks the common structure of the six currency returns. The monitor records the absolute correlation between PC1 and dollar, the absolute correlation between PC2 and carry, and the projection \(R^2\) of carry onto the span of PC2 and PC3. Their reference thresholds in the current implementation are 0.9, 0.6 and 0.5 respectively. The older PC2 correlation flag is still recorded.</p>
 <p>The projection measures how closely carry lies within that two dimensional space as the individual components rotate. PCA supplies monitoring statistics. The named dollar, carry and market factors supply the attribution.</p>
@@ -100,6 +101,8 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <p>Six checks cover retrieved source IDs, source dates, exact numeric strings, causal claims, directional forecasts and matching citations in English and Chinese. Failed drafts are kept for review. These checks can catch formal errors; assessing whether the reporting supports the interpretation still requires judgment.</p>
 <p>The residual belongs to the currency and trading day. News links provide context for that observation. A story's individual contribution remains unmeasured.</p>
 <p>The daily headline feed is available independently of narrative triggers. The local service caches it for 30 minutes. The public site captures it when the page is built and displays the fetch time.</p>
+<p>A separate panel starts from the two largest factor contributions and retrieves factor-related reporting alongside a currency-context search. It retains exclusion reasons for explicit quote pages and unrelated institutional-name matches. These links are reading leads, with no new causal judgment. News publication dates have day precision; observation timestamps record the actual retrieval time.</p>
+<p>The text-briefing preview separates the attribution date from the news observation cutoff. It uses saved numbers and fixed copy, with no 09:00 ET schedule enabled. A scheduled morning edition needs sources actually observed before its cutoff and a separate check of the text.</p>
 </section>
 
 <section class="method__section">
@@ -196,6 +199,7 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <p>FX 页和新闻触发器默认使用 126 日 OLS。稳健性徽标将它的三组归因分别与 Ridge、Lasso 后 OLS 重拟合结果比较。每次比较把三组贡献的绝对差相加，再除以该货币对此前 252 个交易记录中 OLS 残差绝对值的中位数。</p>
 <p>距离连续两天超过自身历史滚动 95 分位时进入偏离状态，连续两天回到阈值内时退出。Ridge 偏离与 Lasso 换因子可以并列。Lasso 选择集为空时单列“弃权”，附当前连续天数；这些日期从 Lasso 距离的分位样本中剔除。历史不足时显示不可用。</p>
 <p>一致性反映归因对估计方法的敏感程度。三路接近时，共同遗漏的变量仍可能影响结果。徽标独立展示，不改变系统健康状态的颜色。</p>
+<p>研究页在三种模型共同拥有的已确认日期上比较 OLS、Ridge 与 post-Lasso。最近 252 个共有观测和完整共有历史分别列出残差 MAE、RMSE、相对 OLS 的因子分配差异，以及 Lasso 选集变动率。残差较小表示在这些日期还原波动更接近。比较使用当日实际因子和经过修订的历史数据，预测能力仍需独立检验。Lasso 还使用了更宽的候选因子菜单。</p>
 <details class="method__detail"><summary>PCA 与模型健康检查</summary>
 <p>滚动 PCA 用于观察六组货币收益的共同结构。当前监控记录 PC1 与美元因子的绝对相关、PC2 与套息因子的绝对相关，以及套息因子在 PC2、PC3 张成空间上的投影 \(R^2\)。代码中的参考阈值依次为 0.9、0.6 和 0.5。旧的 PC2 相关告警仍保留在记录中。</p>
 <p>投影指标观察套息因子与整个二维空间的接近程度，可减少单个主成分旋转带来的干扰。PCA 输出监控统计量；归因使用显式构造的美元、套息和市场因子。</p>
@@ -213,6 +217,8 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <p>六项检查核对来源 ID、来源日期、数字字面值、因果断言、方向预测及中英引用集合。未通过的稿件仍保留完整记录。这些检查能拦截形式错误，报道是否足以支持解释还需要判断。</p>
 <p>残差属于某个货币对的某个交易日。新闻链接提供这一观测的背景，单篇报道对应的贡献没有可用测量。</p>
 <p>每日头条独立于短评触发器。本地服务缓存 30 分钟，公开站在构建时抓取快照，页面标明抓取时间。</p>
+<p>另一个面板从贡献绝对值最大的两个因子出发，分别检索因子报道与货币背景。报价页面、机构同名造成的无关投资报道会留下排除原因。链接提供阅读线索，尚未加入新的因果判断。新闻发布日期仅精确到日，抓取时间记录程序实际看到报道的时刻。</p>
+<p>文字简报预览将归因日期与新闻抓取截至时间分开标注，使用已保存数字和固定文案。目前尚未启用美东 09:00 定时发布。正式晨报需要截止时点前实际获取的来源，并单独检查文字质量。</p>
 </section>
 
 <section class="method__section">

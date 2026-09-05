@@ -233,15 +233,30 @@ under a project path, which is why every URL in it is relative. Headlines and
 the dollar index are therefore snapshots taken at build time, and the page
 says when they were fetched rather than calling them live.
 
-The current request set contains 141 responses: the Attribution page includes
+The current request set contains 144 responses: the Attribution page includes
 1, 5 and 21 observation totals for each estimator and window, and the pair
 research pages include 252 saved observations for each combination. The builder
-does not export the full coefficient history. The 2026-09-04 build's JSON payload
+does not export the full coefficient history. Three additional comparison files
+summarise matched final observations for each training window, including full
+history and the latest 252 shared observations. The 2026-09-04 build's JSON payload
 is about 7.2 MiB before compression, loaded by page and selection.
 
 Boundaries are the web layer's: read `outputs/` and `data/cache/` only, write
 only `site/`, never touch either status.json. A publish failure is this task's
 own and leaves the other two heartbeats alone.
+
+The News payload includes leading-factor searches alongside independent currency
+searches. RSS publication dates are day-precision; each retrieval records its
+actual observation timestamp and exclusions. These are source-reading panels,
+with no LLM generation added to a page request or a site build.
+
+To inspect the first text-briefing draft, run `python -m fxdash.narrative.briefing`
+with `PYTHONPATH=src`. It writes `outputs/briefing/preview.json`, with a copy of
+the news evidence. It never changes the attribution or narrative status files.
+The page hides a preview when its attribution data version no longer matches.
+The preview has no scheduler registration. A 09:00 America/New_York edition still
+needs pre-cutoff collection, late/missing-input handling and editorial acceptance.
+Do not retrospectively label a fresh RSS search as a morning's available news.
 
 Three heartbeats, none a substitute for another. The pipeline's
 `last_live_success` and the narrative layer's `last_run` say whether those

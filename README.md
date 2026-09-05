@@ -35,6 +35,13 @@ either page to see its individual daily contributions, coefficient history,
 training R² and residual z scores. Lasso includes a factor selection history.
 The public research view shows the latest 252 trading observations.
 
+Each research page also compares OLS, Ridge and post-Lasso on shared, final
+observations. The table reports residual MAE and RMSE, factor-allocation
+differences from OLS, and Lasso selection changes. A recent 252-observation view
+sits above the full-history comparison. These use realised factor moves and
+historical data, so they evaluate return reconstruction, not forecasts. The wider
+Lasso menu means its comparison includes both estimator and factor-set effects.
+
 ![The estimation window runs from t minus w through t minus one. Its coefficients are applied to factor moves on day t, then the window advances one trading day.](src/fxdash/web/static/figures/timeline-en.svg)
 
 | Estimator | Calculation |
@@ -50,8 +57,10 @@ trading observations. Within each split, means and scales are learned from the
 training fold alone and applied unchanged to its validation fold. Each estimator
 keeps its own result.
 
-An agreement badge compares the three contribution groups across estimators,
-scaled by the pair's recent residual size. Rolling PCA and model health checks
+Neutral comparison badges compare the three contribution groups across estimators,
+scaled by the pair's recent residual size. Similar estimates may still leave a
+large residual, which has its own flag. The badges always refer to the latest
+daily 126-observation comparison. Rolling PCA and model health checks
 provide further context on common currency structure and changes in fit.
 
 The current calculation revision is `2026-09-04.fold-local-cv-pca`. It corrects
@@ -112,6 +121,20 @@ recalculation can change dashboard values without rewriting those dated notes.
 
 Daily headlines are fetched independently of the narrative trigger. The public
 site includes the headlines collected at build time.
+
+The News page also pairs each currency's two largest factor contributions with
+factor-related searches and a separate currency-context search. These are reading
+leads with source links, not additional AI explanations. Explicit quote pages and
+unrelated sovereign-fund investment stories are excluded with recorded reasons.
+Publication dates have day precision; retrieval timestamps record when the
+application actually observed the reporting.
+
+A text-briefing preview is available through `python -m fxdash.narrative.briefing`.
+It saves its own evidence packet in `outputs/briefing/preview.json` and labels the
+attribution date separately from the news observation cutoff. This first draft
+uses fixed templates and saved numbers. The 09:00 America/New_York edition is not
+scheduled yet; point-in-time news collection and editorial checks come next.
+Audio and multi-agent delivery remain future work.
 
 ## Running locally
 

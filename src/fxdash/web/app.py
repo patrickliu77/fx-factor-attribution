@@ -22,6 +22,9 @@ from ..config import (
     WINDOWS,
 )
 from . import headlines as HL
+from .comparison import report as comparison_report
+from .drivers import DriverBoard
+from ..narrative.briefing import load_preview
 from . import newsfeed as NF
 from .market import RANGES as MARKET_RANGES
 from .store import DataStore, clean, clean_list
@@ -205,6 +208,13 @@ def create_app(output_dir: Path | None = None,
             "data_version": s.data_version,
         }
 
+    @api.get("/research/comparison")
+    def research_comparison(window: int = Query(DEFAULT_WINDOW)):
+        s = snap()
+        if window not in s.windows:
+            raise HTTPException(422, detail=f"window must be one of {s.windows}")
+        return comparison_report(s, window)
+
     # ----------------------------------------------------------- pair series
     @api.get("/pairs/{pair}/summary")
     def pair_summary(
@@ -330,6 +340,7 @@ def create_app(output_dir: Path | None = None,
     # daily headlines: read Google News directly, memory only (the second
     # documented exception to rule 1, see headlines.py)
     board = HL.HeadlineBoard()
+    drivers = DriverBoard()
 
     def _week_window():
         """Week window = the last 5 contract trading days, the same window the
@@ -459,6 +470,9 @@ def create_app(output_dir: Path | None = None,
             "opinions": {"items": opinion_items},
             "fallback": fallback,
             "covered_days": [d.get("date") for d in days],
+            "drivers": drivers.snapshot(s),
+            "headline_exclusions": live.get("excluded", []),
+            "briefing": load_preview(s.output_dir, s.data_version),
         }
 
     @api.get("/pairs/{pair}/news")
