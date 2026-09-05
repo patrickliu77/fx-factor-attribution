@@ -44,9 +44,13 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register the text briefing clock gate"))
     $registered = [xml](Export-ScheduledTask -TaskName $TaskName)
     $ns = New-Object System.Xml.XmlNamespaceManager($registered.NameTable)
     $ns.AddNamespace("t", "http://schemas.microsoft.com/windows/2004/02/mit/task")
-    foreach ($check in @(@("CalendarTrigger/t:Repetition/t:Interval","PT5M"),@("CalendarTrigger/t:Repetition/t:Duration","PT2H10M"),@("CalendarTrigger/t:Repetition/t:StopAtDurationEnd","false"),@("StopOnIdleEnd","false"),@("WakeToRun","true"),@("StartWhenAvailable","true"),@("MultipleInstancesPolicy","IgnoreNew"))) {
+    foreach ($check in @(@("CalendarTrigger/t:Repetition/t:Interval","PT5M"),@("CalendarTrigger/t:Repetition/t:Duration","PT2H10M"),@("StopOnIdleEnd","false"),@("WakeToRun","true"),@("StartWhenAvailable","true"),@("MultipleInstancesPolicy","IgnoreNew"))) {
         $node = $registered.SelectSingleNode("//t:$($check[0])", $ns)
         if (-not $node -or $node.InnerText -ne $check[1]) { throw "Registration verification failed: $($check[0])" }
+    }
+    # The XML omits StopAtDurationEnd when it has the schema default false.
+    if ((Get-ScheduledTask -TaskName $TaskName).Triggers.Repetition.StopAtDurationEnd) {
+        throw "The repetition window must not terminate an in-flight publication."
     }
     # Windows may serialize Z as an equivalent explicit local UTC offset.
     $anchor = [DateTimeOffset]::Parse($registered.SelectSingleNode("//t:StartBoundary", $ns).InnerText)
