@@ -30,7 +30,10 @@ add the daily records over the last 1, 5 or 21 trading observations.
 
 The coefficients use rolling windows of 63, 126 and 252 trading observations.
 OLS at 126 days supplies the FX page and news trigger; the Attribution page lets
-readers compare windows and estimators.
+readers compare windows, estimators and return periods. Open a currency pair from
+either page to see its individual daily contributions, coefficient history,
+training R² and residual z scores. Lasso includes a factor selection history.
+The public research view shows the latest 252 trading observations.
 
 ![The estimation window runs from t minus w through t minus one. Its coefficients are applied to factor moves on day t, then the window advances one trading day.](src/fxdash/web/static/figures/timeline-en.svg)
 
@@ -48,6 +51,11 @@ trading observations. Each estimator keeps its own result.
 An agreement badge compares the three contribution groups across estimators,
 scaled by the pair's recent residual size. Rolling PCA and model health checks
 provide further context on common currency structure and changes in fit.
+
+These are statistical return decompositions. A contribution describes the fitted
+association with an observed factor move; it does not establish an event's causal
+effect. Percentages on the FX cards use the sum of absolute group contributions
+as their denominator. Signed bp values show the direction and possible offsets.
 
 ## Factors and sources
 

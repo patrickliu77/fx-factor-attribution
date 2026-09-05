@@ -72,6 +72,10 @@ def request_set(meta: dict) -> list[str]:
         "/narrative/daily" + canonical,
     ]
     requests += [f"/attribution/weekly?window={w}&model={m}" for w in windows for m in models]
+    requests += [f"/attribution/weekly?window={w}&model={m}&days={d}"
+                 for w in windows for m in models for d in (1, 21)]
+    requests += [f"/pairs/{p}/series?window={w}&model={m}&observations=252"
+                 for p in pairs for w in windows for m in models]
     requests += [f"/pairs/{p}/news" for p in pairs]
     requests += [f"/market/series/{p}?range={r}" for p in pairs for r in MARKET_RANGES]
     return requests

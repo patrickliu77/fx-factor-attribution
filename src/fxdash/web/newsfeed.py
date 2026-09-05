@@ -432,6 +432,11 @@ def weekly_decomposition(combo, n_days: int = WEEK_DAYS) -> dict:
         "end": combo.dates[-1],
         "n_days": n,
         "y_bp": round(y, 1),
+        "contains_provisional": bool(np.any(combo.provisional[lo:])),
+        "contributions_bp": {
+            factor: float(np.nansum(series[lo:])) * 1e4
+            for factor, series in combo.contributions.items()
+        },
         "residual_bp": round(residual, 1),
         "buckets": {k: round(v, 1) for k, v in buckets.items()},
         "labels": {key: label for key, label, _m in BUCKETS},

@@ -5,15 +5,15 @@ for one decisive reason: cache persistence. `data/cache/` is gitignored, and a
 runner starts from nothing every time, which would remove the second step of the
 three-step acquisition fallback (online, then cache, then a local user file).
 
-Two independent daily tasks:
+Three independent daily tasks:
 
-| | Attribution pipeline | Narrative layer |
-|---|---|---|
-| Task name | `fxdash-live` | `fxdash-narrative` |
-| Time (local) | 19:30 | 20:15 |
-| Entry point | `fxdash.run` | `fxdash.narrative.run` |
-| Status file | `outputs/status.json` | `outputs/narrative/status.json` |
-| Log | `outputs/logs/live.log` | `outputs/logs/narrative.log` |
+| | Attribution pipeline | Narrative layer | Site publish |
+|---|---|---|---|
+| Task name | `fxdash-live` | `fxdash-narrative` | `fxdash-publish` |
+| Time (local) | 19:30 | 20:15 | 20:45 |
+| Entry point | `fxdash.run` | `fxdash.narrative.run` | `ops/publish.ps1` |
+| Status file | `outputs/status.json` | `outputs/narrative/status.json` | `site/build.json` |
+| Log | `outputs/logs/live.log` | `outputs/logs/narrative.log` | `outputs/logs/publish.log` |
 
 They are separate on purpose. The narrative layer goes online and calls an LLM,
 and both of those are flaky. Folding it into the pipeline would let one network
@@ -57,9 +57,13 @@ a slow source and the retry schedule (every 15 minutes, at most 3 attempts).
 An early-morning slot would compress that buffer to about 2 hours and buy
 nothing, because both slots report the same closed session.
 
-Both tasks are registered to wake the machine and to start as soon as possible
+The tasks are registered to wake the machine and to start as soon as possible
 after a missed schedule. Together with the automatic gap backfill, a machine
 that was off for several days catches up on its next run.
+
+The current registrations use the signed-in user's interactive token. That user
+must remain signed in; a locked session is sufficient. Wake settings do not turn
+on a powered-off computer. The evening schedule has no separate 09:00 ET briefing.
 
 ## Run modes
 
@@ -209,6 +213,12 @@ the same source serves the live server at the root and the published site
 under a project path, which is why every URL in it is relative. Headlines and
 the dollar index are therefore snapshots taken at build time, and the page
 says when they were fetched rather than calling them live.
+
+The current request set contains 141 responses: the Attribution page includes
+1, 5 and 21 observation totals for each estimator and window, and the pair
+research pages include 252 saved observations for each combination. The builder
+does not export the full coefficient history. The 2026-09-04 build's JSON payload
+is about 7.2 MiB before compression, loaded by page and selection.
 
 Boundaries are the web layer's: read `outputs/` and `data/cache/` only, write
 only `site/`, never touch either status.json. A publish failure is this task's

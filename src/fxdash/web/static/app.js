@@ -8,6 +8,7 @@
 import { t, getLang, setLang } from "./i18n.js";
 import * as CH from "./charts.js";
 import { methodologyHtml } from "./methodology.js";
+import { researchHtml, researchOptions } from "./research.js";
 
 /* global echarts */
 
@@ -22,6 +23,7 @@ const MODEL_ORDER = ["ols", "ridge", "lasso"];
 const state = {
   window: Number(localStorage.getItem("fxdash.window")) || 126,
   model: localStorage.getItem("fxdash.model") || "ols",
+  period: 5,
   meta: null,
   quotes: null,
   ranges: {},
@@ -338,8 +340,8 @@ function controls() {
     opts.map((v) => `<button type="button" data-v="${v}" aria-pressed="${
       String(v) === String(current)}">${esc(String(v).toUpperCase())}</button>`).join("") + "</div>";
   return `<div class="ctlrow">
-    <span class="lbl">${esc(t("ctl.model"))}</span>${seg("model", models, state.model)}
-    <span class="lbl">${esc(t("ctl.window"))}</span>${seg("window", windows, state.window)}
+    <div class="ctlgroup"><span class="lbl">${esc(t("ctl.model"))}</span>${seg("model", models, state.model)}</div>
+    <div class="ctlgroup"><span class="lbl">${esc(t("ctl.window"))}</span>${seg("window", windows, state.window)}</div>
   </div>`;
 }
 
@@ -540,7 +542,8 @@ async function pageNews(view) {
   const storyRows = inlineStories.length
     ? inlineStories.map((s, i) => storyRowHtml(s, "s:" + s.url, i + 1)).join("")
     : `<p class="empty">${esc(t("news.emptyweek"))}</p>` + (fb ? `
-      <div class="col gap14" style="margin-top:16px">
+      <details class="archive">
+        <summary>${esc(t("news.fallback.title", { date: fb.date }))}</summary>
         <div class="between">
           <h2 class="sec">${esc(t("news.fallback.title", { date: fb.date }))}</h2>
           <div class="hint nowrap">${esc(flaggedRows
@@ -553,7 +556,7 @@ async function pageNews(view) {
         <p class="stack-note">${esc(t("news.fallback.note"))}</p>
         <div class="col">${fbStories.filter(keepInline).map((s, i) =>
           storyRowHtml(s, "f:" + s.url, i + 1)).join("")}</div>
-      </div>` : "");
+      </details>` : "");
 
   const heads = news.today.items;
   const earlier = (news.earlier && news.earlier.items) || [];
@@ -747,9 +750,10 @@ function composeRead(daily) {
   const parts = [
     t("read.lead", { pair: label(top.pair), move: fmtBp(top.y == null ? null : top.y * 1e4) + " bp" }),
     t("read.split", {
-      sys: fmtShare(mean(movers.map((m) => m.shares.systematic))),
-      exo: fmtShare(mean(movers.map((m) => m.shares.exogenous))),
-      res: fmtShare(mean(movers.map((m) => m.shares.residual))),
+      pair: label(top.pair),
+      sys: fmtBp1(top.systematic == null ? null : top.systematic * 1e4),
+      exo: fmtBp1(top.exogenous == null ? null : top.exogenous * 1e4),
+      res: fmtBp1(top.residual == null ? null : top.residual * 1e4),
     }),
   ];
   const widest = movers.slice().sort((a, b) =>
@@ -819,11 +823,12 @@ function cardHtml(pair, row, counts, robust) {
         <i style="flex:1;background:var(--res)"></i>
       </div>
       <div class="split">
-        <div><i style="background:var(--sys)"></i>${esc(t("sys")).toUpperCase()} <b>${fmtShare(ms)}</b></div>
-        <div><i style="background:var(--exo)"></i>${esc(t("exo")).toUpperCase()} <b>${fmtShare(me)}</b></div>
-        <div><i style="background:var(--res)"></i>${esc(t("res")).toUpperCase()} <b>${fmtShare(mr)}</b></div>
+        <div><i style="background:var(--sys)"></i>${esc(t("sys"))} <b>${fmtBp1(row?.systematic == null ? null : row.systematic * 1e4)} bp</b> <small>(${fmtShare(ms)})</small></div>
+        <div><i style="background:var(--exo)"></i>${esc(t("exo"))} <b>${fmtBp1(row?.exogenous == null ? null : row.exogenous * 1e4)} bp</b> <small>(${fmtShare(me)})</small></div>
+        <div><i style="background:var(--res)"></i>${esc(t("res"))} <b>${fmtBp1(row?.residual == null ? null : row.residual * 1e4)} bp</b> <small>(${fmtShare(mr)})</small></div>
       </div>
-      <div class="hint nowrap">r2 ${row && row.r2_full != null ? row.r2_full.toFixed(3) : "n/a"}
+      <div class="card__basis">${esc(t("fx.absolute"))}</div>
+      <div class="hint nowrap">${esc(t("fx.fit"))} ${row && row.r2_full != null ? row.r2_full.toFixed(3) : "n/a"}
         ${esc(t("fx.onmodel"))} ${esc(((state.meta && state.meta.default_model) || "ols").toUpperCase())} ${
           (state.meta && state.meta.default_window) || 126}</div>
     </div>
@@ -837,6 +842,7 @@ function cardHtml(pair, row, counts, robust) {
     <div class="ranges" data-ranges="${pair}">${RANGES.map((r) =>
       `<button type="button" data-r="${r}" aria-pressed="${r === range}">${
         esc(t("range." + r))}</button>`).join("")}</div>
+    <a class="card__research" href="#/research/${pair}">${esc(t("research.open"))} ↗</a>
   </div>`;
 }
 
@@ -996,7 +1002,7 @@ async function pageFX(view) {
     // The plot area belongs to the chart's own interactions; a click on the chart
     // is not a toggle (flashing the panel away on a chart click is too abrupt)
     if (ev.target.closest("[data-ranges]") || ev.target.closest(".actions")
-      || ev.target.closest(".plot")) return;
+      || ev.target.closest(".plot") || ev.target.closest("a")) return;
     const p = c.dataset.card;
     state.openPair = state.openPair === p ? null : p;
     state.openExplain = null;
@@ -1005,6 +1011,7 @@ async function pageFX(view) {
   view.querySelectorAll("[data-card]").forEach((c) => {
     c.onclick = (ev) => toggleCard(c, ev);
     c.onkeydown = (ev) => {
+      if (ev.target.closest("a")) return;
       if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleCard(c, ev); }
     };
   });
@@ -1074,7 +1081,7 @@ function divergingRow(row, order, half) {
 }
 
 async function pageAttribution(view) {
-  const qs = `?window=${state.window}&model=${state.model}`;
+  const qs = `?window=${state.window}&model=${state.model}${state.period === 5 ? "" : "&days=" + state.period}`;
   const data = await api("/attribution/weekly" + qs);
   const order = data.bucket_order;
   const rows = data.pairs.slice()
@@ -1096,7 +1103,7 @@ async function pageAttribution(view) {
 
   const robust = data.robustness || {};
   const body = rows.map((r) => `<div class="attrrow">
-      <div class="name">${esc(label(r.pair))}</div>
+      <div class="name"><a href="#/research/${r.pair}">${esc(label(r.pair))} ↗</a></div>
       <div class="num r" style="color:${dirColor(r.y_bp)}">${fmtBp1(r.y_bp)}</div>
       ${divergingRow(r, order, half)}
       <div class="num r">${fmtBp1(r.residual_bp)}</div>
@@ -1141,7 +1148,7 @@ async function pageAttribution(view) {
 
   view.innerHTML = `
     <div class="headrow">
-      <div class="dateline">${esc(t("attr.week", {
+      <div class="dateline">${esc(t("attr.period", {
         start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))}</div>
       <div class="ctlrow">
         ${controls()}
@@ -1154,8 +1161,12 @@ async function pageAttribution(view) {
         <h1 class="page">${esc(t("attr.title"))}</h1>
         <p class="lede">${esc(t("attr.blurb"))}</p>
       </div>
+      <div class="ctlrow"><span class="lbl">${esc(t("attr.horizon"))}</span>
+        <div class="ctl" id="periodctl">${[1,5,21].map(d => `<button type="button" data-days="${d}" aria-pressed="${state.period === d}">${esc(t("period."+d))}</button>`).join("")}</div>
+      </div>
       <div class="legend">${legend}</div>
-      <div class="col">
+      <p class="stack-note">${esc(t("attr.basis"))}${rows.some(r=>r.contains_provisional) ? " " + esc(t("attr.provisional")) : ""}</p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="${esc(t("attr.title"))}"><div class="col attrtable">
         <div class="attrhead"><div>${esc(t("attr.pair"))}</div>
           <div class="r">${esc(t("attr.move"))}</div>
           <div>${esc(t("attr.decomp"))}</div>
@@ -1165,16 +1176,35 @@ async function pageAttribution(view) {
         <div class="attrscale"><div></div><div></div>
           <div class="axis"><span>${-half} bp</span><span>0</span><span>+${half} bp</span></div>
           <div></div><div></div></div>
-      </div>
+      </div></div>
       <div class="col gap16">
         <div class="between">
           <h2 class="sec">${esc(t("attr.matrix"))}</h2>
           <div class="hint">${esc(m.note)}</div>
         </div>
-        ${matrixHtml}
+        <div class="matrix-scroll" tabindex="0" role="region" aria-label="${esc(t("attr.matrix"))}">${matrixHtml}</div>
       </div>
     </div>`;
   bindControls(view);
+  view.querySelectorAll("#periodctl button").forEach(b=>b.onclick=()=>{state.period=Number(b.dataset.days);render();});
+}
+
+async function pageResearch(view, pair) {
+  if (!state.meta.pairs.includes(pair)) throw new Error("Unknown currency pair");
+  const data = await api(`/pairs/${pair}/series?window=${state.window}&model=${state.model}&observations=252`);
+  view.innerHTML = researchHtml(data, label(pair), controls());
+  bindControls(view);
+  if (!data.dates.length) return;
+  const draw = () => {
+    const factor = view.querySelector("#beta-factor").value;
+    const options = researchOptions(data, factor);
+    for (const [key, option] of Object.entries(options)) {
+      charts.get("research:"+key)?.dispose();
+      mount(view.querySelector(`[data-research="${key}"]`), option, "research:"+key);
+    }
+  };
+  view.querySelector("#beta-factor").onchange = draw;
+  draw();
 }
 
 /* ------------------------------------------------------------- Methodology */
@@ -1229,6 +1259,7 @@ async function render() {
     if (route.startsWith("/news")) await pageNews(view);
     else if (route.startsWith("/attribution")) await pageAttribution(view);
     else if (route.startsWith("/methodology")) await pageMethodology(view);
+    else if (route.startsWith("/research/")) await pageResearch(view, route.split("/")[2]);
     else await pageFX(view);
   } catch (err) {
     view.innerHTML = `<p class="empty">${esc(t("error"))} <code>${esc(err.message)}</code></p>`;

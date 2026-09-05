@@ -225,6 +225,37 @@ def test_short_history_degrades_to_available_days(site):
     assert block["n_days"] == len(DATES)
 
 
+@pytest.mark.parametrize("days", [1, 5, 21])
+def test_attribution_horizon_matches_existing_summary(site, days):
+    client, _ = site
+    result = client.get('/api/attribution/weekly', params={'days': days}).json()
+    rows = {r['pair']: r for r in result['pairs']}
+    expected = client.get('/api/summary').json()['scales'][f'{days}d']['pairs'][PAIR_A]
+    row = rows[PAIR_A]
+    assert result['days'] == days
+    assert row['n_days'] == expected['n_days']
+    assert row['y_bp'] == pytest.approx(expected['y'] * 1e4)
+    assert row['residual_bp'] == pytest.approx(expected['residual'] * 1e4)
+    assert row['contains_provisional'] == expected['contains_provisional']
+    for key, value in row['contributions_bp'].items():
+        assert value == pytest.approx(expected['contributions'][key] * 1e4)
+
+
+def test_research_tail_slices_every_series_consistently(site):
+    client, _ = site
+    path = f'/api/pairs/{PAIR_A}/series'
+    full = client.get(path, params={'model': 'lasso'}).json()
+    tail = client.get(path, params={'model': 'lasso', 'observations': 3}).json()
+    assert tail['dates'] == full['dates'][-3:]
+    for key in ('y', 'residual', 'r2_full', 'r2_exog', 'provisional', 'lambda'):
+        assert tail[key] == full[key][-3:]
+    for key in ('contributions', 'betas', 'selected'):
+        for factor, values in full[key].items():
+            assert tail[key][factor] == values[-3:]
+    assert client.get(path, params={'observations': 0}).status_code == 422
+    assert client.get('/api/attribution/weekly', params={'days': 7}).status_code == 422
+
+
 def test_provisional_contaminates_the_window(site):
     client, _ = site
     s = client.get("/api/summary").json()

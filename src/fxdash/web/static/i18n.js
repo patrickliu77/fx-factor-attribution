@@ -174,55 +174,55 @@ export const DICT = {
   "read.title": { en: "Today's read", zh: "今日总述" },
   "read.pending": { en: "AUTO SUMMARY", zh: "自动摘要" },
   "read.note": {
-    en: "Composed from the attribution table. Click any pair to see the news behind its residual.",
-    zh: "由归因表直接拼出。点击任一货币对可看它残差背后的新闻。",
+    en: "Calculated from saved attribution records. Open a pair to read available news notes and their sources.",
+    zh: "根据已保存的归因记录汇总。展开货币对可查看已有短评与来源。",
   },
   "read.lead": {
     en: "{pair} led the session at {move}.",
     zh: "{pair} 是当日幅度最大的一对，{move}。",
   },
   "read.split": {
-    en: "Across the six pairs the model puts an average {sys} of the move on systematic dollar and carry, {exo} on exogenous factors, and leaves {res} unexplained.",
-    zh: "六对的平均分解是：{sys} 归于系统性的美元与利差，{exo} 归于外生因子，{res} 未获解释。",
+    en: "For {pair}, dollar and carry contribute {sys} bp, other factors {exo} bp, and the residual is {res} bp.",
+    zh: "{pair} 的美元与套息贡献为 {sys} bp，其他因子贡献为 {exo} bp，残差为 {res} bp。",
   },
   "read.residual": {
-    en: "{pair} carries the widest residual at z = {z}, which is the trigger the narrative layer watches.",
-    zh: "{pair} 的残差最宽，z = {z}，这正是叙事层要盯的触发信号。",
+    en: "{pair} has the largest absolute residual z score at {z}. Narrative review also requires a residual of at least 50 bp and an absolute z score of at least 2.",
+    zh: "{pair} 的残差 z 分数绝对值最大，z = {z}。短评触发还要求残差绝对值至少 50 bp，且 z 分数绝对值至少为 2。",
   },
   "read.quiet": {
-    en: "No pair shows an unusual residual today, so nothing is flagged for narrative review.",
-    zh: "今日没有 pair 出现异常残差，无需叙事层介入。",
+    en: "All available residual z scores are below 1.5 in absolute value.",
+    zh: "当前可得的残差 z 分数绝对值均小于 1.5。",
   },
   "read.unavailable": { en: "No attribution rows for this selection.", zh: "当前选择下没有归因数据。" },
 
   "legend.open": { en: "What do these three mean?", zh: "这三个是什么意思？" },
   "legend.sys": {
-    en: "The part of the move that every dollar pair shared today, plus the part carry explains. If this is large, the dollar moved, not the currency on the other side.",
-    zh: "当天所有美元对共同经历的那部分变动，加上利差能解释的部分。这一段大，说明是美元在动，不是对手货币在动。",
+    en: "The fitted contributions of dollar and carry, calculated from other currency pairs. A large value indicates exposure to these shared return patterns. It does not identify which country's news caused the move.",
+    zh: "美元与套息因子的拟合贡献，这两个因子均由其他货币对构造。数值较大说明该货币对与这些共同收益模式的联系较强，单凭它无法判断消息来自哪个国家。",
   },
   "legend.exo": {
-    en: "Traced to outside forces the model measures: rate differentials, oil and metals, credit, equity volatility. Pair specific but still mechanical.",
-    zh: "能追溯到模型所测外部力量的那部分：利差、油与金属、信用、股市波动率。因对而异，但仍是机械的。",
+    en: "Fitted contributions from rate differentials, commodities, credit and equity volatility. The factor menu depends on the pair and estimator. These estimates describe statistical associations.",
+    zh: "利差、商品、信用和股市波动率的拟合贡献。所用因子随货币对与估计方法变化，结果描述统计上的联系。",
   },
   "legend.window": {
     en: "How much history the regression sees. The model refits every day using only the last N trading days, roughly 3, 6, or 12 months. Short windows adapt fast but are noisy; long windows are steadier but slower to notice a regime change. 126 is the default.",
     zh: "回归能看到多长的历史。模型每天只用最近 N 个交易日重新拟合，约合 3、6、12 个月。窗口短适应快但噪声大；窗口长更稳，但对状态切换反应慢。默认 126。",
   },
   "legend.model": {
-    en: "Three ways of fitting the same decomposition. OLS is plain least squares, every factor keeps its raw coefficient. Ridge shrinks coefficients when factors overlap, so the split is steadier. Lasso first picks the few factors that matter, then refits OLS on just those. When all three roughly agree, the read is robust.",
-    zh: "拟合同一套分解的三种方式。OLS 是普通最小二乘，每个因子拿原始系数。Ridge 在因子相互重叠时把系数往回收，分解更稳。Lasso 先挑出真正要紧的少数因子，再只对它们重新做 OLS。三个模型大体一致时，这个读数才算扎实。",
+    en: "OLS fits the baseline factors. Ridge shrinks their coefficients. Lasso selects from a wider menu, then OLS refits the selected columns. Agreement means the grouped contributions are similar across these choices; it does not establish causal importance.",
+    zh: "OLS 拟合基准因子，Ridge 对这些因子的系数施加收缩。Lasso 从更宽的候选集中筛选，再用 OLS 重拟合选中的列。模型间一致表示分组贡献对这几种选择较接近，不能据此认定因果重要性。",
   },
   "legend.res": {
-    en: "What the model cannot account for. When it blows out, the narrative layer goes looking for same-day news as evidence.",
-    zh: "模型解释不了的部分。它异常放大时，叙事层会去找当天的新闻作为证据。",
+    en: "The return left after subtracting all fitted factor contributions. When both trigger thresholds are met, the narrative layer looks for dated reporting to provide context. News coverage does not measure a headline's contribution to this residual.",
+    zh: "当日收益减去全部因子贡献后剩下的部分。达到两个触发门槛后，叙事层检索有日期的报道补充背景。报道本身无法量出某条新闻对残差的贡献。",
   },
 
   // ----------------------------------------------------------- Attribution
   "attr.week": { en: "Week of {start} to {end}", zh: "{start} 至 {end} 当周" },
   "attr.title": { en: "Why each pair moved", zh: "每一对为什么动" },
   "attr.blurb": {
-    en: "The weekly move decomposed into dollar and carry, rates, risk, and commodities, with the residual left over. Below, the stories cited on recent flagged days, shown as contemporaneous evidence for residuals the model could not explain.",
-    zh: "把周度变动分解为美元与利差、利率、风险、商品，剩下的是残差。下方是近期触发日被引用的报道，作为模型无法解释部分的同期证据。",
+    en: "Choose a return period, then compare contributions from dollar and carry, rates, risk, and commodities. Positive and negative contributions may offset each other. Open a pair to inspect individual factors and their history.",
+    zh: "选择归因期间，比较美元与套息、利率、风险和商品的贡献。正负贡献可以相互抵消。点击货币对可查看各因子及其历史。",
   },
   "attr.methodology": { en: "Methodology", zh: "方法论" },
   "attr.robust": { en: "Robustness", zh: "稳健性" },
@@ -249,6 +249,16 @@ export const DICT = {
   },
 
   "loading": { en: "Loading", zh: "加载中" },
+  "fx.absolute": { en: "Percentages show each group's absolute size divided by the sum of the three absolute sizes.", zh: "百分比为该组贡献绝对值除以三组绝对值之和。" },
+  "fx.fit": { en: "Training R²", zh: "训练窗口 R²" },
+  "research.open": { en: "Factors and sensitivity history", zh: "因子贡献与敏感度历史" },
+  "attr.period": { en: "{start} to {end}", zh: "{start} 至 {end}" },
+  "attr.horizon": { en: "RETURN PERIOD", zh: "归因期间" },
+  "period.1": { en: "1 day", zh: "1 日" },
+  "period.5": { en: "5 days", zh: "5 日" },
+  "period.21": { en: "21 days", zh: "21 日" },
+  "attr.basis": { en: "Periods count trading observations. Window sets the training history. Robustness badges refer to the latest daily OLS 126 comparison.", zh: "归因期间按交易观测计数，窗口设置用于拟合的历史长度。稳健性徽标对应最新单日的 126 日 OLS 比较。" },
+  "attr.provisional": { en: "This period includes provisional observations.", zh: "本期间包含待确认观测。" },
   "error": { en: "Could not reach the server.", zh: "无法连接服务。" },
 };
 

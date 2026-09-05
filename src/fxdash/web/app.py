@@ -233,12 +233,13 @@ def create_app(output_dir: Path | None = None,
         start: str | None = None,
         end: str | None = None,
         fields: str | None = None,
+        observations: int | None = Query(None, ge=1, le=1260),
     ):
         s = snap()
         combo = get_combo(s, pair, window, model)
         etag_guard(
             request, response, s,
-            f"series:{pair}:{window}:{model}:{start}:{end}:{fields}",
+            f"series:{pair}:{window}:{model}:{start}:{end}:{fields}:{observations}",
         )
 
         wanted = (
@@ -255,6 +256,8 @@ def create_app(output_dir: Path | None = None,
         if end:
             while hi > lo and combo.dates[hi - 1] > end:
                 hi -= 1
+        if observations is not None:
+            lo = max(lo, hi - observations)
 
         out: dict = {
             "pair": pair,
@@ -521,11 +524,14 @@ def create_app(output_dir: Path | None = None,
 
     @api.get("/attribution/weekly")
     def attribution_weekly(
-        window: int = Query(DEFAULT_WINDOW), model: str = Query("ols")
+        window: int = Query(DEFAULT_WINDOW), model: str = Query("ols"),
+        days: int = Query(5),
     ):
         """Attribution page: per-pair weekly bucket decomposition + story x pair
         citation map (evidence mapping)."""
         s = snap()
+        if days not in SCALES.values():
+            raise HTTPException(422, detail="days must be one of 1, 5, 21")
         if window not in s.windows:
             raise HTTPException(422, detail=f"window must be one of {s.windows}")
         if model not in s.models:
@@ -535,7 +541,7 @@ def create_app(output_dir: Path | None = None,
             combo = s.combo(pair, window, model)
             if combo is None:
                 continue
-            block = NF.weekly_decomposition(combo)
+            block = NF.weekly_decomposition(combo, n_days=days)
             if block:
                 rows.append(block)
         flagged = _recent_flagged()
@@ -547,6 +553,7 @@ def create_app(output_dir: Path | None = None,
             "bucket_labels": {**{k: l for k, l, _m in NF.BUCKETS},
                               "residual": "Residual"},
             "pairs": rows,
+            "days": days,
             "matrix": NF.citation_matrix(flagged, s.pairs),
             "story_counts": NF.story_counts(flagged, s.pairs),
             "robustness": s.robustness,
@@ -575,6 +582,9 @@ def create_app(output_dir: Path | None = None,
                 "date": row["date"],
                 "y": row["y"],
                 "top_factor": row["top_factor"],
+                "systematic": row["systematic"],
+                "exogenous": row["exogenous"],
+                "residual": row["residual"],
                 "residual_z": row["residual_z"],
                 "r2_full": row["r2_full"],
                 "shares": {

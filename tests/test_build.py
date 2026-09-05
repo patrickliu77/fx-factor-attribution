@@ -68,7 +68,9 @@ def test_request_set_covers_every_page(site_app):
     pairs, windows, models = meta["pairs"], meta["windows"], meta["models"]
     # 4 fixed + overview and daily at the canonical basis + weekly per combination
     # + a news feed per pair + a price series per pair and range
-    expected = 4 + 2 + len(windows) * len(models) + len(pairs) + len(pairs) * len(MARKET_RANGES)
+    expected = (4 + 2 + 3 * len(windows) * len(models) + len(pairs)
+                + len(pairs) * len(MARKET_RANGES)
+                + len(pairs) * len(windows) * len(models))
     assert len(reqs) == expected == len(set(reqs))
     assert "/news" in reqs and "/narrative/status" in reqs
     assert f"/overview?window={meta['default_window']}&model={meta['default_model']}" in reqs
@@ -82,7 +84,7 @@ def test_build_writes_assets_every_request_and_the_manifest(site_app, tmp_path):
     manifest = B.build(out, app=app)
 
     for name in ("index.html", "app.js", "i18n.js", "charts.js", "methodology.js",
-                 "methodology-figures.js",
+                 "methodology-figures.js", "research.js",
                  "style.css", "vendor/echarts.min.js", ".nojekyll", "build.json"):
         assert (out / name).exists(), name
 

@@ -71,7 +71,7 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <h2><span>04</span> From coefficients to contributions</h2>
 <p>\[ c_{i,t}=\beta_{i,t}x_{i,t},\qquad r_t=y_t-\sum_i c_{i,t}. \]</p>
 <p>A positive contribution points towards dollar strength; a negative contribution points towards dollar weakness. Opposing contributions can offset one another. The fitted intercept is included in the residual. The accounting identity closes by construction, so closure alone tells us nothing about the model's explanatory power.</p>
-<p>The FX page groups dollar and carry as systematic, all remaining factors as exogenous, and the remainder as residual. The Attribution page separates the exogenous group into rates, risk and commodities. Its weekly view sums the last five trading records for each pair. The 1, 5 and 21 day summaries use the same daily arithmetic, including any provisional observations in the period.</p>
+<p>The FX page groups dollar and carry as systematic, all remaining factors as exogenous, and the remainder as residual. The Attribution page separates the exogenous group into rates, risk and commodities. Choose 1, 5 or 21 trading observations to change the return period; the training window is a separate setting. Period totals include any provisional observations and carry a note when those are present. Open a pair to inspect individual contributions, coefficient history, training fit and residual z scores. Lasso also shows its selection history.</p>
 <p><code>r2_full</code> describes the fit inside the training window. <code>r2_exog</code> comes from refitting that estimator after removing dollar and carry. It measures the fit of the external variables on their own. Both are sample fit statistics; neither measures the fraction of a particular day's move explained.</p>
 <p>The FX card's three percentages use absolute contribution sizes as their denominator. Read their signs alongside the percentages. A small net move can contain sizeable contributions in opposite directions.</p>
 </section>
@@ -181,7 +181,7 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <h2><span>04</span> 从系数到贡献</h2>
 <p>\[ c_{i,t}=\beta_{i,t}x_{i,t},\qquad r_t=y_t-\sum_i c_{i,t}. \]</p>
 <p>正贡献对应美元走强，负贡献对应美元走弱，不同因子可以相互抵消。拟合中的隐含截距并入残差。恒等式按定义闭合，模型解释力需要另外评估。</p>
-<p>FX 页把美元与套息贡献归为系统性贡献，其余因子归为外生贡献，剩余部分为残差。Attribution 页将外生部分细分为利率、风险和商品。周度视图对每个货币对最近五个交易记录求和；1、5、21 日汇总均沿用逐日加总，期间若含 provisional 观测会一并标出。</p>
+<p>FX 页把美元与套息贡献归为系统性贡献，其余因子归为外生贡献，剩余部分为残差。Attribution 页将外生部分细分为利率、风险和商品。收益区间可选 1、5、21 个交易观测，训练窗口单独设置。区间内的 provisional 观测参与加总，并在页面注明。点击货币对可查看逐因子贡献、系数历史、训练拟合和残差 z 分数，Lasso 另有因子选择历史。</p>
 <p><code>r2_full</code> 是训练窗口内的全模型拟合优度。<code>r2_exog</code> 在去掉美元与套息因子后，用同一种估计方法重新拟合，衡量外部变量独立使用时的拟合程度。两个指标描述样本内拟合情况，单日贡献则由系数与当天因子变动计算。</p>
 <p>FX 卡片上的三组百分比按贡献绝对值占比绘制，阅读时需要同时看正负号。净变动较小的一天，也可能包含彼此抵消的大额贡献。</p>
 </section>
