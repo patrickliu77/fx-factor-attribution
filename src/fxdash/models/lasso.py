@@ -18,6 +18,7 @@ from sklearn.linear_model import Lasso
 from ..config import LAMBDA_GRID_LOG10, LAMBDA_GRID_POINTS
 from ..data.base import record
 from .ridge import time_series_splits
+from .validation import prepare_fold
 
 _LASSO = Lasso(fit_intercept=False, max_iter=20000, tol=1e-7, warm_start=False)
 
@@ -34,7 +35,7 @@ def _cv_error(z: np.ndarray, y: np.ndarray, grid: np.ndarray) -> np.ndarray:
         return np.zeros(len(grid))
     errors = np.zeros(len(grid))
     for train, test in splits:
-        zt, yt, zv, yv = z[train], y[train], z[test], y[test]
+        zt, yt, zv, yv = prepare_fold(z, y, train, test)
         if len(yv) == 0:
             continue
         for i, lam in enumerate(grid):
@@ -65,9 +66,11 @@ def select_lambda(z: np.ndarray, y: np.ndarray, tag: str) -> float:
     return float(grid[int(np.argmin(_cv_error(z, y, grid)))])
 
 
-def solve_lasso(z: np.ndarray, y: np.ndarray, state: dict, refit: bool) -> dict:
+def solve_lasso(z: np.ndarray, y: np.ndarray, state: dict, refit: bool,
+                *, cv_data=None) -> dict:
     if refit or state.get("lam") is None:
-        state["lam"] = select_lambda(z, y, state.get("tag", "lasso"))
+        x_cv, y_cv = cv_data if cv_data is not None else (z, y)
+        state["lam"] = select_lambda(x_cv, y_cv, state.get("tag", "lasso"))
     lam = state["lam"]
 
     selected = np.abs(_lasso_beta(z, y, lam)) > 0

@@ -28,6 +28,7 @@ from .config import (
     BENCHMARK_R2_TOL,
     DEFAULT_WINDOW,
     MODELS,
+    MODEL_REVISION,
     OUTPUT_DIR,
     PAIRS,
     START,
@@ -45,6 +46,7 @@ from .health import run_health_checks
 from . import heartbeat
 from .models.pca_monitor import run_monitor
 from .models.rolling import rolling_fit
+from .models.revision import require_compatible_history
 from .schedule.merge import merge_contract
 from .schedule.modes import (
     RunMode,
@@ -171,6 +173,14 @@ def main(argv=None) -> int:
     if args.rewrite_history and mode is not RunMode.BACKFILL:
         parser.error("--rewrite-history is only allowed together with --mode backfill")
 
+    require_compatible_history(
+        OUTPUT_DIR, rewrite_history=args.rewrite_history,
+        complete=(pd.Timestamp(args.start) <= pd.Timestamp(START) and args.end is None
+                  and set(args.pairs) == set(PAIRS)
+                  and set(args.windows) == set(WINDOWS)
+                  and set(args.models) == set(MODELS)),
+    )
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     ALIGNMENT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -288,6 +298,7 @@ def main(argv=None) -> int:
 
     manifest = {
         "mode": mode.value,
+        "model_revision": MODEL_REVISION,
         "start": str(start.date()),
         "end": str(contract["date"].max().date()),
         "pairs": args.pairs,

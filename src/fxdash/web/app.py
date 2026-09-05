@@ -109,6 +109,7 @@ def create_app(output_dir: Path | None = None,
             "date_range": {"first": s.date_first, "last": s.date_last},
             "literature_bands": LITERATURE_BANDS_DAILY,
             "schema_version": s.schema_version,
+            "model_revision": s.status.get("model_revision"),
             "data_version": s.data_version,
         }
 

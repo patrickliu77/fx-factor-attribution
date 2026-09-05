@@ -16,7 +16,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from ..config import CONTRACT_DIR, CONTRACT_SCHEMA_VERSION, OUTPUT_DIR
+from ..config import CONTRACT_DIR, CONTRACT_SCHEMA_VERSION, MODEL_REVISION, OUTPUT_DIR
 from ..data.base import record
 
 COLUMNS = [
@@ -101,6 +101,7 @@ def write_contract(frame: pd.DataFrame) -> dict:
     latest = frame[frame["date"] == latest_date]
     snapshot = {
         "schema_version": CONTRACT_SCHEMA_VERSION,
+        "model_revision": MODEL_REVISION,
         "date": str(latest_date.date()),
         "n_records": int(len(latest)),
         "records": json.loads(
@@ -114,6 +115,7 @@ def write_contract(frame: pd.DataFrame) -> dict:
     )
 
     summary = {
+        "model_revision": MODEL_REVISION,
         "rows": int(len(frame)),
         "partitions": len(written),
         "combos": int(

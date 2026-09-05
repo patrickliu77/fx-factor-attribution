@@ -99,3 +99,22 @@ def test_warn_flags_name_the_failing_line():
     for flags in frame["warn_flags"]:
         for flag in filter(None, flags.split(",")):
             assert flag in PCA_CORR_WARN
+
+
+def test_monitor_matches_standardized_pca_with_unequal_volatilities():
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    from fxdash.config import HIGH_YIELD, LOW_YIELD
+
+    panel = _returns(n=127) * np.array([0.2, 4, 1, 2, 0.5, 3])
+    block = panel.iloc[:126]
+    scores = PCA().fit_transform(StandardScaler().fit_transform(block))
+    dollar = block.mean(axis=1).to_numpy()
+    carry = (block[LOW_YIELD].mean(axis=1) - block[HIGH_YIELD].mean(axis=1)).to_numpy()
+    result = run_monitor(panel, window=126).iloc[0]
+    assert abs(result.corr_pc1_dollar) == pytest.approx(
+        abs(np.corrcoef(scores[:, 0], dollar)[0, 1]), abs=1e-12)
+    assert abs(result.corr_pc2_carry) == pytest.approx(
+        abs(np.corrcoef(scores[:, 1], carry)[0, 1]), abs=1e-12)
+    assert result.carry_projection_r2 == pytest.approx(
+        projection_r2(carry, scores[:, 1:3]), abs=1e-12)

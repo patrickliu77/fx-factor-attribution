@@ -15,6 +15,7 @@ import numpy as np
 
 from ..config import CV_SPLITS, LAMBDA_GRID_LOG10, LAMBDA_GRID_POINTS
 from ..data.base import record
+from .validation import prepare_fold
 
 
 def default_grid() -> np.ndarray:
@@ -44,7 +45,7 @@ def _cv_error(z: np.ndarray, y: np.ndarray, grid: np.ndarray) -> np.ndarray:
         return np.zeros(len(grid))
     errors = np.zeros(len(grid))
     for train, test in splits:
-        zt, yt, zv, yv = z[train], y[train], z[test], y[test]
+        zt, yt, zv, yv = prepare_fold(z, y, train, test)
         if len(yv) == 0:
             continue
         gram = zt.T @ zt
@@ -80,9 +81,11 @@ def select_lambda(z: np.ndarray, y: np.ndarray, tag: str) -> float:
     return float(grid[int(np.argmin(_cv_error(z, y, grid)))])
 
 
-def solve_ridge(z: np.ndarray, y: np.ndarray, state: dict, refit: bool) -> dict:
+def solve_ridge(z: np.ndarray, y: np.ndarray, state: dict, refit: bool,
+                *, cv_data=None) -> dict:
     if refit or state.get("lam") is None:
-        state["lam"] = select_lambda(z, y, state.get("tag", "ridge"))
+        x_cv, y_cv = cv_data if cv_data is not None else (z, y)
+        state["lam"] = select_lambda(x_cv, y_cv, state.get("tag", "ridge"))
     lam = state["lam"]
     return {
         "beta_std": _ridge_beta(z, y, lam),

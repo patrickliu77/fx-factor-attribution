@@ -105,6 +105,25 @@ Neither is for everyday use, and both leave a trace in
 
 ## Outputs
 
+### Calculation revisions
+
+The revision identifier is recorded in the latest contract snapshot, run manifest,
+status, API metadata and static build manifest. Version 1.1.1 keeps the existing
+contract fields and corrects fold-local validation and PCA score units.
+
+A daily run refuses to merge results into a different calculation revision.
+Migration requires a verified backup and a complete
+`--mode backfill --start 2010-01-01 --rewrite-history` with all pairs, windows and
+models and no end date. Recompute in an isolated checkout first, check key coverage
+and attribution identities, then install the complete outputs with status.json
+last. Keep the old source and outputs together for rollback. Preserve the frozen
+alignment and narrative directories.
+
+`ops/audit_model_migration.py` compares a candidate with a backup whose
+`backup_manifest.json` lists SHA-256 file hashes. It produces a CSV, figure and
+summary and refuses changed key coverage, invalid identities or modified archives.
+The comparison includes any source-data revisions and is not a performance test.
+
 Downstream reads `outputs/contract/` and `outputs/status.json`. That contract
 does not change.
 

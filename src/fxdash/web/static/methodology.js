@@ -21,6 +21,7 @@ function en() {
   <h1>Reading a daily FX move</h1>
   <p class="lede">The dashboard splits a currency's daily return into contributions from a fixed set of factors and a residual. This page follows the calculation from market closes to the numbers in the Attribution view.</p>
   <p class="method__meta">Six USD pairs <span>Daily log returns</span><span>Default: OLS, 126 days</span></p>
+  <p class="method__meta">Calculation revision: 2026-09-04.fold-local-cv-pca</p>
 </header>
 
 <section class="method__section">
@@ -56,6 +57,7 @@ ${figure('timeline','en','02','The window length controls how much history infor
 <p>Within the window, each factor is centred and divided by its standard deviation; the FX return is centred too. After fitting, the slopes are converted back to the factor's original units. OLS uses the baseline set. Ridge uses the same set with a penalty that shrinks the coefficients. Lasso uses the candidate menu to select columns, then OLS estimates new slopes on the retained columns.</p>
 ${figure('lasso','en','03','The retained variables here are illustrative. The selection and the refit use the same historical window.')}
 <p>Ridge and Lasso each choose their penalty using three forward time series splits within the window. They search a 25 point logarithmic grid, initially from \(10^{-4}\) to \(10^4\), with expansion at a boundary. Penalties are reselected every 21 trading observations; coefficients are refitted daily. Each estimator retains its own contribution series.</p>
+<p>Each split learns the factor means, standard deviations and return mean from its training fold. Validation observations use those same values. The final daily fit then uses the full historical window.</p>
 <details class="method__detail"><summary>Estimation equations</summary>
 <p>Let \(Z\) be the standardised factor matrix and \(y_c\) the centred return. The solvers use:</p>
 <p>\[ \begin{aligned}
@@ -84,6 +86,7 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <details class="method__detail"><summary>PCA and model health</summary>
 <p>Rolling PCA tracks the common structure of the six currency returns. The monitor records the absolute correlation between PC1 and dollar, the absolute correlation between PC2 and carry, and the projection \(R^2\) of carry onto the span of PC2 and PC3. Their reference thresholds in the current implementation are 0.9, 0.6 and 0.5 respectively. The older PC2 correlation flag is still recorded.</p>
 <p>The projection measures how closely carry lies within that two dimensional space as the individual components rotate. PCA supplies monitoring statistics. The named dollar, carry and market factors supply the attribution.</p>
+<p>The PCA eigensystem comes from the return correlation matrix. Component scores and projections use centred, standardised returns so that they share the eigensystem's units.</p>
 <p>Model health checks compare rolling fit with the pair's own history and the other pairs. A separate heartbeat records when the pipeline last completed successfully. These checks help distinguish a change in fit from a missed run.</p>
 </details>
 </section>
@@ -131,6 +134,7 @@ function zh() {
   <h1>一天的汇率变动，如何分解</h1>
   <p class="lede">仪表盘将每日汇率收益拆成各因子贡献与残差。这一页从数据开始，依次说明系数如何估计、贡献如何计算，以及归因页上的数字该怎样读。</p>
   <p class="method__meta">六组美元汇率 <span>日对数收益</span><span>默认：OLS，126 日</span></p>
+  <p class="method__meta">计算版本：2026-09-04.fold-local-cv-pca</p>
 </header>
 
 <section class="method__section">
@@ -166,6 +170,7 @@ ${figure('timeline','zh','02','窗口长度决定系数参考多少历史。当�
 <p>窗口内，各因子减去自身均值并除以标准差，汇率收益也去均值。拟合结束后，将斜率换回原量纲。OLS 保留基础因子集；Ridge 在同一因子集上加入收缩惩罚；Lasso 从候选菜单选择列，再用 OLS 对保留列重新估计斜率。</p>
 ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与重拟合使用同一个历史窗口。')}
 <p>Ridge 与 Lasso 分别在窗口内进行三折顺时交叉验证，选择惩罚强度。初始搜索网格含 25 个对数间隔点，范围为 \(10^{-4}\) 至 \(10^4\)，命中边界时扩展。惩罚参数每 21 个交易观测重选一次，系数每日重拟合。每条模型路径分别保留自己的贡献序列。</p>
+<p>每一折的因子均值、标准差与收益均值均由该折训练数据计算，验证数据沿用这些数值。选定惩罚参数后，再用完整历史窗口进行当天的最终拟合。</p>
 <details class="method__detail"><summary>估计公式</summary>
 <p>记标准化因子矩阵为 \(Z\)，去均值收益为 \(y_c\)，三种求解方式为：</p>
 <p>\[ \begin{aligned}
@@ -194,6 +199,7 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <details class="method__detail"><summary>PCA 与模型健康检查</summary>
 <p>滚动 PCA 用于观察六组货币收益的共同结构。当前监控记录 PC1 与美元因子的绝对相关、PC2 与套息因子的绝对相关，以及套息因子在 PC2、PC3 张成空间上的投影 \(R^2\)。代码中的参考阈值依次为 0.9、0.6 和 0.5。旧的 PC2 相关告警仍保留在记录中。</p>
 <p>投影指标观察套息因子与整个二维空间的接近程度，可减少单个主成分旋转带来的干扰。PCA 输出监控统计量；归因使用显式构造的美元、套息和市场因子。</p>
+<p>PCA 的特征向量来自收益相关矩阵，主成分得分与投影均使用去均值、标准化后的收益，保持计算量纲一致。</p>
 <p>模型健康检查将滚动拟合程度与自身历史及其他货币对比较。运行心跳则记录管线最近一次成功完成的时间。结合两者，可以分辨拟合关系变化与任务漏跑。</p>
 </details>
 </section>

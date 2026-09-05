@@ -64,7 +64,9 @@ def _fit_once(
     z = (x_window - mu) / sigma
     yc = y_window - y_window.mean()
 
-    out = solver(z, yc, state, refit)
+    # CV receives raw observations. Each fold fits its own preprocessing;
+    # the whole-window basis above is reserved for the final daily fit.
+    out = solver(z, yc, state, refit, cv_data=(x_window, y_window))
     beta_std = np.asarray(out["beta_std"], dtype=float)
     # only after scaling back to original units may the beta enter attribution
     beta = beta_std / sigma

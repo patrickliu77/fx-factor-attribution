@@ -93,7 +93,8 @@ def run_monitor(returns: pd.DataFrame, window: int) -> pd.DataFrame:
         loadings = _orient(eigenvectors[:, order], previous)
         previous = loadings
 
-        scores = block @ loadings
+        standardized = (block - block.mean(axis=0)) / block.std(axis=0)
+        scores = standardized @ loadings
         window_slice = slice(t - window, t)
         carry_window = carry.to_numpy()[window_slice]
         pc1_dollar = float(
@@ -102,7 +103,7 @@ def run_monitor(returns: pd.DataFrame, window: int) -> pd.DataFrame:
         pc2_carry = float(np.corrcoef(scores[:, 1], carry_window)[0, 1])
 
         # projection R²: CARRY onto span{PC2, PC3}, rotation invariant (SPEC_phase2 3.1)
-        span = block @ eigenvectors[:, ranked[1:3]]
+        span = standardized @ eigenvectors[:, ranked[1:3]]
         carry_projection_r2 = projection_r2(carry_window, span)
 
         total = float(eigenvalues.sum())

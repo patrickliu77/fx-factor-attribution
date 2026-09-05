@@ -46,11 +46,17 @@ The public research view shows the latest 252 trading observations.
 Factors are standardised inside the training window. Final coefficients are
 converted back to their original units for attribution. Ridge and Lasso choose
 their penalties using three forward time series splits, reselecting every 21
-trading observations. Each estimator keeps its own result.
+trading observations. Within each split, means and scales are learned from the
+training fold alone and applied unchanged to its validation fold. Each estimator
+keeps its own result.
 
 An agreement badge compares the three contribution groups across estimators,
 scaled by the pair's recent residual size. Rolling PCA and model health checks
 provide further context on common currency structure and changes in fit.
+
+The current calculation revision is `2026-09-04.fold-local-cv-pca`. It corrects
+validation-fold preprocessing and applies correlation-PCA loadings to standardised
+returns. Contract and PCA files carry version `1.1.1`; their fields are unchanged.
 
 These are statistical return decompositions. A contribution describes the fitted
 association with an observed factor move; it does not establish an event's causal
@@ -100,6 +106,9 @@ forecasts and matching citations across languages. Drafts that fail are retained
 for review. Mechanical checks have limits, so the source links remain available
 alongside each published note. The residual is reported for its currency and date;
 an individual headline's contribution is unmeasured.
+
+Existing notes keep the facts saved when they were generated. A later history
+recalculation can change dashboard values without rewriting those dated notes.
 
 Daily headlines are fetched independently of the narrative trigger. The public
 site includes the headlines collected at build time.

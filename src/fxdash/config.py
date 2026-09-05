@@ -262,8 +262,10 @@ LITERATURE_BANDS_DAILY = {
 # ---------------------------------------------------------------- outputs
 # 1.1.0: adds the provisional column (backward-compatible addition; downstream reads
 # legacy data with a default of False)
-CONTRACT_SCHEMA_VERSION = "1.1.0"
-PCA_MONITOR_SCHEMA_VERSION = "1.1.0"
+# 1.1.1 keeps the fields and corrects CV preprocessing and PCA score units.
+CONTRACT_SCHEMA_VERSION = "1.1.1"
+PCA_MONITOR_SCHEMA_VERSION = "1.1.1"
+MODEL_REVISION = "2026-09-04.fold-local-cv-pca"
 
 # SPEC 10.1 reference benchmark: mean rolling R² of the full OLS model, 126-day window
 BENCHMARK_R2_MEAN = {

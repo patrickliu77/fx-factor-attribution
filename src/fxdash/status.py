@@ -105,6 +105,7 @@ def build_status(
         "reasons": reasons,
         "source_as_of": manifest.get("source_as_of", {}),
         "schema_version": manifest.get("contract", {}).get("schema_version"),
+        "model_revision": manifest.get("model_revision"),
     }
     record(
         "status",
