@@ -91,6 +91,16 @@ def test_latest_attempt_is_separate_from_latest_available_edition(tmp_path):
     assert result["current_push"]["state"] == "published"
 
 
+def test_malformed_run_status_cannot_break_the_archive(tmp_path):
+    path=save(tmp_path,edition(tmp_path))
+    M.atomic_json(path.parent / "prepare.json",{"state":{}})
+    M.atomic_json(path.parent / "publish.json",{"state":[]})
+    result=A.dashboard(tmp_path)
+    assert result["current"]["state"] == "ready"
+    assert result["latest_run"]["prepare"]["state"] == "not_recorded"
+    assert result["current_push"]["state"] == "not_recorded"
+
+
 def test_corrupt_frozen_edition_prevents_push_and_is_left_unchanged(tmp_path):
     v = edition(tmp_path)
     path = save(tmp_path,v)

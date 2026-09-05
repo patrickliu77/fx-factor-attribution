@@ -94,7 +94,7 @@ def receipt(root, edition):
     raw = M.read_json(root / "publish.json")
     allowed = {"published", "publish_failed", "publishing", "finalize_failed"}
     result = {k: raw[k] for k in ("state", "started_at", "finished_at", "attempts") if k in raw}
-    if result.get("state") not in allowed:
+    if not isinstance(result.get("state"), str) or result["state"] not in allowed:
         result["state"] = "not_recorded"
     if result["state"] == "published" and (not edition.get("edition_hash")
                                          or raw.get("edition_hash") != edition["edition_hash"]):
@@ -106,7 +106,7 @@ def run_record(root):
     preparation = M.read_json(root / "prepare.json")
     claim = M.read_json(root / "prepare.claim")
     state = preparation.get("state")
-    if state not in {"prepared", "prepare_failed", "ineligible_packet"}:
+    if not isinstance(state, str) or state not in {"prepared", "prepare_failed", "ineligible_packet"}:
         state = "attempt_recorded" if (root / "prepare.claim").exists() else "not_recorded"
     edition = read_edition(root / "edition.json") if (root / "edition.json").exists() else {}
     return {"date": root.name, "prepare": {"state": state, "started_at": claim.get("started_at")},
