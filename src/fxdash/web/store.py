@@ -38,7 +38,7 @@ CHECK_INTERVAL_S = 30  # stat status.json only once this many seconds have passe
 SETTLE_S = 10  # settle after mtime advances, to dodge the write window
 SIGNATURE_GAP_S = 5  # gap between the two signatures
 RETRY_AFTER_S = 60  # retry interval after a failed reload
-KNOWN_SCHEMAS = {"1.0.0", "1.1.0"}
+KNOWN_SCHEMAS = {"1.0.0", "1.1.0", "1.1.1"}
 
 # matches FX_INTERNAL_FACTORS on the engine side; hardcoded rather than imported
 # from the engine (web imports only config, and these two names are contract

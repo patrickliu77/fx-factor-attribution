@@ -55,6 +55,23 @@ def _row(date, pair, i, model="ols", provisional=False):
     }
 
 
+def test_current_writer_version_is_readable_by_web(isolated_outputs):
+    from fxdash.config import CONTRACT_SCHEMA_VERSION, MODEL_REVISION
+    root = isolated_outputs
+    _write_fixture(root)
+    for path in (root / "contract").glob("year=*/part.parquet"):
+        frame = pd.read_parquet(path)
+        frame["schema_version"] = CONTRACT_SCHEMA_VERSION
+        frame.to_parquet(path, index=False)
+    path = root / "status.json"
+    status = json.loads(path.read_text(encoding="utf-8"))
+    status["model_revision"] = MODEL_REVISION
+    path.write_text(json.dumps(status), encoding="utf-8")
+    meta = TestClient(create_app(root, cache_dir=root / "no-cache")).get("/api/meta").json()
+    assert meta["schema_version"] == CONTRACT_SCHEMA_VERSION
+    assert meta["model_revision"] == MODEL_REVISION
+
+
 def _write_fixture(root, n_days=len(DATES)):
     rows = []
     for i, date in enumerate(DATES[:n_days], start=1):
