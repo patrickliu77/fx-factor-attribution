@@ -339,6 +339,62 @@ links, expandable retained items, safe rendering and mobile width using browser-
 fixtures. It accepts the same base URL and artifact-directory arguments as the
 other browser scripts. No audit command generates a new narrative or morning edition.
 
+### Local news review
+
+The review tool reads explicitly supplied saved `/news` responses or driver packets.
+It makes no network or model requests. Use a new directory outside the repository
+and pipeline outputs; existing bundles and score files are never overwritten.
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m fxdash.narrative.news_review export site/api/news.json --out C:/review-artifacts/edition-01
+```
+
+Replace the example destination with your own review directory. Multiple saved
+snapshot paths can precede `--out`. Every candidate is included, with its original
+observation time, source link and input hash. Identical input snapshots are rejected.
+The bundle contains `dataset.json`, `labels.blank.json`, `review.html` and font
+licenses. Open `review.html` directly in a browser; no server is needed. The page
+hides saved decisions and reasons and orders items by their hashed ids. It serves
+fonts from embedded local copies and blocks network connections. Original article
+links open only when the reviewer follows them.
+
+Use an alias and declare human, AI-assisted or synthetic labels. Relevance,
+redundancy and event-evidence adequacy are separate axes. Duplicate references
+must identify another candidate in the same snapshot and channel. Uncertain values
+remain explicit. The tool cannot verify the reviewer's identity or independence.
+Export progress regularly; there is no browser-storage autosave. Importing progress
+checks dataset/version binding and asks before replacing unsaved changes.
+
+```powershell
+python -m fxdash.narrative.news_review score --dataset C:/review-artifacts/edition-01/dataset.json --labels C:/review-artifacts/labels.json --out C:/review-artifacts/score-01.json
+```
+
+The report checks the dataset content hash and rejects unknown ids, duplicate
+label rows, invalid timestamps, missing provenance and cyclic duplicate references.
+Partial reviews are allowed. No labels produce `status=unassessed`, null rates
+and zero denominators. Unknown and unlabelled values are excluded from binary
+rate denominators; each axis's labelled count remains visible. The metrics are:
+
+| Metric | Denominator |
+|---|---|
+| Unrelated retained candidates | Retained candidates labelled related or unrelated |
+| Retained duplicates | Retained candidates labelled unique or duplicate |
+| Retained candidates with insufficient event evidence | Retained candidates labelled sufficient or insufficient |
+| Excluded relevant event candidates | Related, unique, event-supporting, in-window candidates with usable titles and links |
+| Relevant candidates held for review | The same eligible set as the exclusion metric |
+
+Counts describe the supplied snapshots only. Repeated channels or dates can reuse
+reporting, so these are not independent observations. Date exclusions and duplicate
+removals are not automatically counted as relevance errors. A title supporting an
+event summary does not establish factual truth, economic causality or a forecast.
+The tool never feeds labels back into live rules or rewrites archived notes.
+
+`node ops/audit_news_review.mjs BUNDLE_DIR ARTIFACT_DIR` checks offline mobile and
+desktop rendering, empty labels, downloads, progress import and invalid references.
+It requires the same Playwright setup as other audits. All labels produced by this
+audit are explicitly synthetic and written outside the real review bundle.
+
 Three heartbeats, none a substitute for another. The pipeline's
 `last_live_success` and the narrative layer's `last_run` say whether those
 jobs ran; `build.json`'s `built_at` says whether the page was rebuilt. If the

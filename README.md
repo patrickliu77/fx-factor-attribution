@@ -140,6 +140,16 @@ Publication dates have day precision; retrieval timestamps record when the app
 actually observed the reporting. The `driver-sources-1` policy applies to newly
 collected driver packets. Existing briefing inputs and citation ids stay unchanged.
 
+Saved news snapshots can also be exported to a local review sheet. It hides the
+screening decisions while a reviewer labels topic relevance, duplicate reporting
+and whether the title/snippet supports a specific event summary. Labels start
+empty. A separate offline command reports counts and rates against those labels,
+with explicit denominators and no rate when nothing has been assessed. Reviewer
+identity and human involvement are self-reported. These checks evaluate the saved
+candidate set; they do not measure causal explanations or web-wide news recall.
+The sheet works without a server, retains the site's fonts and exports progress
+as a local JSON download. See [the review commands](ops/README.md#local-news-review).
+
 ## Morning text edition
 
 At 08:50 New York time, the morning job saves the previous session's attribution

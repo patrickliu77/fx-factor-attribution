@@ -1,0 +1,72 @@
+// Test a local review sheet with explicitly synthetic labels. No real labels or
+// pipeline outputs are changed. Pass bundle directory and a separate artifact dir.
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+const {chromium}=await import(process.env.FXDASH_PLAYWRIGHT || 'playwright');
+const [bundleArg,outArg]=process.argv.slice(2);
+if(!bundleArg || !outArg) throw Error('Pass bundle directory and separate artifacts');
+const bundle=path.resolve(bundleArg),out=path.resolve(outArg);
+if(out===bundle || out.startsWith(bundle+path.sep)) throw Error('Keep synthetic downloads outside the review bundle');
+await mkdir(out,{recursive:true});
+const dataset=JSON.parse(await readFile(path.join(bundle,'dataset.json'),'utf8'));
+const browser=await chromium.launch({headless:true});
+const errors=[],requests=[],results=[];
+try {
+  for(const width of [390,1440]) {
+    const context=await browser.newContext({viewport:{width,height:1000},acceptDownloads:true,offline:true});
+    const page=await context.newPage();
+    page.on('pageerror',e=>errors.push(String(e)));
+    page.on('request',r=>{if(/^https?:/i.test(r.url())) requests.push(r.url());});
+    await page.goto(pathToFileURL(path.join(bundle,'review.html')).href);
+    await page.locator('#title').waitFor();
+    await page.evaluate(()=>document.fonts.ready);
+    assert.ok(await page.evaluate(()=>document.fonts.check('16px Outfit') && document.fonts.check('12px "IBM Plex Mono"')));
+    const visible=await page.locator('#review-data').textContent();
+    assert.ok(!JSON.parse(visible).items.some(i=>'decision' in i || 'reason' in i));
+    for(const id of ['relevance','redundancy','evidence','origin']) assert.equal(await page.locator('#'+id).inputValue(),'');
+    const first=await page.locator('#candidate').getAttribute('data-id');
+    await page.locator('#alias').fill('BROWSER TEST ONLY');
+    await page.locator('#origin').selectOption('synthetic');
+    await page.locator('#relevance').selectOption('unrelated');
+    await page.locator('#redundancy').selectOption('unique');
+    await page.locator('#evidence').selectOption('insufficient');
+    await page.locator('#notes').fill('Synthetic UI test, not a human judgement.');
+    const downloadPromise=page.waitForEvent('download');
+    await page.locator('#save').click();
+    const download=await downloadPromise;
+    const saved=path.join(out,`synthetic-labels-${width}.json`);
+    await download.saveAs(saved);
+    const exported=JSON.parse(await readFile(saved,'utf8'));
+    assert.equal(exported.reviewer.origin,'synthetic');
+    assert.equal(exported.labels.filter(l=>l.relevance!==null).length,1);
+    assert.equal(exported.labels.find(l=>l.id===first).evidence,'insufficient');
+    await page.reload();
+    await page.locator('#import').setInputFiles(saved);
+    await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已导入'));
+    assert.equal(await page.locator('#relevance').inputValue(),'unrelated');
+    await page.locator('#unfinished').check();
+    const remaining=dataset.items.filter(i=>i.id!==first);
+    assert.equal(await page.locator('#candidate').getAttribute('data-id'),remaining[0].id);
+    await page.locator('#relevance').selectOption('related');
+    await page.locator('#redundancy').selectOption('unique');
+    await page.locator('#evidence').selectOption('supports_event');
+    await page.locator('#next').click();
+    assert.equal(await page.locator('#candidate').getAttribute('data-id'),remaining[1].id);
+    const wrong={...exported,dataset_id:'wrong-version'};
+    await page.locator('#import').setInputFiles({name:'wrong.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(wrong))});
+    await page.waitForFunction(()=>document.getElementById('status').dataset.error==='true');
+    assert.ok((await page.locator('#status').innerText()).includes('不属于'));
+    await page.locator('#redundancy').selectOption('duplicate');
+    await page.locator('#save').click();
+    assert.ok((await page.locator('#status').innerText()).includes('另一条'));
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(out,`review-${width}.png`),fullPage:true});
+    results.push({width,blank_start:true,export_import:true,wrong_dataset_rejected:true,duplicate_reference_required:true,offline:true});
+    await context.close();
+  }
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  await writeFile(path.join(out,'audit.json'),JSON.stringify({synthetic_only:true,results,errors,requests},null,2));
+  console.log(JSON.stringify({synthetic_only:true,results,errors,requests}));
+} finally {await browser.close();}

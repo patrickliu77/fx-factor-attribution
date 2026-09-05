@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+<title>新闻复核 · FX Factor Attribution</title><style>{{STYLE}}</style></head>
+<body><main>
+<header><p class="eyebrow">FX FACTOR ATTRIBUTION · LOCAL REVIEW</p><h1>新闻复核</h1>
+<p>逐条核对保存的检索材料。页面隐藏了规则的筛选结果，标签留空，完成后可导出。</p>
+<p class="muted">页面不联网、不上传标签，也不修改网站。原文链接由你主动打开。请定期导出进度，关闭页面后未导出的更改会丢失。</p></header>
+<details class="guide"><summary>复核口径与操作说明</summary>
+<p>相关性：标题或摘要是否明确涉及当前检索主题。持相反观点的报道同样可以相关。</p>
+<p>重复报道：在同一次快照、同一检索频道中，是否属于另一条的重复链接或改写转载。多家媒体报道同一事件时，仍需核对是否独立采写。不确定时选择“待核对”。</p>
+<p>事件证据：保存的标题和摘要是否足以写一句有出处的具体事件转述。单纯的主题名称、报价资料或信息过少的片段可标为不足。本页不评估全文真实性、因果关系或未来走势。</p>
+<p>三个维度可以分别填写。候选可能跨频道或跨日期重复，统计范围仅限导入的快照。检查人类型为自行声明，工具无法核实身份或独立性。</p>
+<p>先填写复核代号与标签来源，再导出。以后通过“导入进度”继续同一份样本。导出的 JSON 与 dataset.json 一起交给离线 score 命令计算统计。</p></details>
+<section class="controls" aria-label="复核设置">
+<label>复核代号<input id="alias" maxlength="64" placeholder="可用昵称，无需真实姓名"></label>
+<label>标签来源<select id="origin"><option value="">请选择</option><option value="human">人工复核</option><option value="ai_assisted">AI 辅助标注</option><option value="synthetic">合成测试数据</option></select></label>
+<label>检索频道<select id="channel"><option value="">全部频道</option></select></label>
+<label class="check"><input type="checkbox" id="unfinished">只看未完成</label>
+<div class="actions"><button id="save">导出进度</button><label class="file-button">导入进度<input type="file" id="import" accept=".json,application/json"></label></div>
+</section>
+<p id="status" role="status" aria-live="polite"></p><p id="progress" class="muted"></p>
+<nav class="pager" aria-label="候选导航"><button id="previous">上一条</button><span id="position" class="mono"></span><button id="next">下一条</button></nav>
+<article id="candidate">
+<p id="channel-name" class="eyebrow"></p><h2 id="title"></h2><p id="source" class="mono muted"></p>
+<p id="timing" class="muted"></p><p id="query" class="muted"></p><p id="snippet"></p>
+<a id="original" target="_blank" rel="noopener noreferrer">打开原文 ↗</a>
+<section class="labels" aria-label="候选标注">
+<label>与检索主题的相关性<select id="relevance"><option value="">尚未标注</option><option value="related">相关</option><option value="unrelated">无关</option><option value="unclear">待核对</option></select></label>
+<label>重复情况<select id="redundancy"><option value="">尚未标注</option><option value="unique">未见重复</option><option value="duplicate">重复报道</option><option value="unclear">待核对</option></select></label>
+<label>标题和摘要的事件证据<select id="evidence"><option value="">尚未标注</option><option value="supports_event">足以作具体事件转述</option><option value="insufficient">证据不足</option><option value="unclear">待核对</option></select></label>
+<label id="duplicate-label" hidden>对应的另一条报道<select id="duplicate_of"><option value="">请选择对应报道</option></select></label>
+<label class="wide">复核备注<textarea id="notes" rows="3" maxlength="1200" placeholder="可记录不确定之处、重复依据或缺少的信息"></textarea></label>
+</section></article>
+<p id="empty" hidden>当前筛选下没有候选。可以取消“只看未完成”或选择其他频道。</p>
+<footer><span id="binding" class="mono"></span><p>本页未生成任何准确率。字体沿用网站的 Outfit 与 IBM Plex Mono。许可见同目录 FONT-LICENSES.txt。</p></footer>
+</main><script type="application/json" id="review-data">{{DATA}}</script><script>{{SCRIPT}}</script></body></html>
