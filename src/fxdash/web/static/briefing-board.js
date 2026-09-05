@@ -67,12 +67,12 @@ function freshnessHtml(current, now) {
 function statusHtml(current, archive, build, now) {
   const run=archive?.latest_run;
   const cell=(title,state,stamp)=>`<div><dt>${title}</dt><dd>${esc(label(state))}</dd>${stamp ? `<small>${esc(stamp)}</small>` : ''}</div>`;
-  return `${freshnessHtml(current,now)}<dl class="brief-status-grid">
+  return `${freshnessHtml(current,now)}<details class="brief-run-details"><summary>${copy('Run details','运行详情')} · ${esc(label(delivery(current,archive,build)))}</summary><dl class="brief-status-grid">
     ${cell(copy('Last preparation record','最近准备记录'),run?.prepare?.state || 'not_recorded',run?.prepare?.started_at)}
     ${cell(copy('Last edition record','最近稿件记录'),run?.edition?.state || 'not_recorded',run?.edition?.generated_at)}
     ${cell(copy('Latest available edition delivery','最新可用稿件交付情况'),delivery(current,archive,build),build.mode==='static' ? build.info?.built_at : (archive?.current_push?.finished_at || run?.push?.finished_at))}
     </dl><p class="hint">${copy('Run records observed','运行记录读取于')} ${esc(archive?.observed_at)}${run ? ` · ${copy('Run date','运行日期')} ${esc(run.date)}` : ''}</p>
-    <p class="hint">${copy('08:50 capture, 09:00 edition, New York weekdays. These are saved observations, not a scheduler heartbeat. A static page cannot see a later failed push; refresh to check for a newer build.','美东工作日 08:50 采集，09:00 出刊。这里展示已保存记录，无法据此确认调度器仍在运行。静态页面看不到之后发生的推送失败，可刷新检查新构建。')}</p>`;
+    <p class="hint">${copy('08:50 capture, 09:00 edition, New York weekdays. These are saved observations, not a scheduler heartbeat. A static page cannot see a later failed push; refresh to check for a newer build.','美东工作日 08:50 采集，09:00 出刊。这里展示已保存记录，无法据此确认调度器仍在运行。静态页面看不到之后发生的推送失败，可刷新检查新构建。')}</p></details>`;
 }
 
 export function briefingBoardHtml(current, archive, build, now=new Date()) {
@@ -106,5 +106,8 @@ export function bindBriefingBoard(root,current,archive,build) {
 export function refreshBriefingStatus(now=new Date()) {
   if (!activeBoard?.panel.isConnected) { activeBoard=null; return; }
   const {panel,current,archive,build}=activeBoard;
-  panel.querySelector('[data-brief-status]').innerHTML=statusHtml(current,archive,build,now);
+  const status=panel.querySelector('[data-brief-status]');
+  const open=status.querySelector('details')?.open;
+  status.innerHTML=statusHtml(current,archive,build,now);
+  status.querySelector('details').open=!!open;
 }
