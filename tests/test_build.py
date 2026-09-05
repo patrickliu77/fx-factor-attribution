@@ -82,8 +82,15 @@ def test_build_writes_assets_every_request_and_the_manifest(site_app, tmp_path):
     manifest = B.build(out, app=app)
 
     for name in ("index.html", "app.js", "i18n.js", "charts.js", "methodology.js",
+                 "methodology-figures.js",
                  "style.css", "vendor/echarts.min.js", ".nojekyll", "build.json"):
         assert (out / name).exists(), name
+
+    # Full-size links on Methodology must work under the Pages project path too.
+    for figure in ("pipeline", "timeline", "lasso"):
+        for lang in ("en", "zh"):
+            rel = f"figures/{figure}-{lang}.svg"
+            assert (out / rel).read_bytes() == (STATIC_DIR / rel).read_bytes()
 
     written = sorted(p for p in _tree(out) if p.startswith("api/"))
     assert written == manifest["files"]

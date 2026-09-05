@@ -227,14 +227,24 @@ a { color: inherit; text-decoration: none; }
 .attrscale { grid-template-columns: 120px 80px minmax(0, 1fr) 90px 168px; }
 
 /* ---------------------------------------------------------- Methodology */
-.method { max-width: 880px; margin: 0 auto; padding-bottom: 80px; }
+.method { max-width: 1000px; min-width: 0; margin: 0 auto; padding: 18px 0 80px; }
 .method__back { font-family: var(--mono); font-size: 12.5px; margin: 0 0 18px; }
 .method__back a { color: var(--mute); text-decoration: none; }
 .method__back a:hover { color: var(--accent); }
-.method h1 { font-size: 34px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 10px; }
-.method h2 { font-size: 21px; font-weight: 600; margin: 44px 0 12px; }
-.method p { font-size: 15.5px; line-height: 1.75; color: var(--text-2); margin: 0 0 14px; text-wrap: pretty; }
-.method p.lede { font-size: 16.5px; color: var(--mute); }
+.method h1 { max-width: 20ch; font-size: clamp(32px, 4vw, 54px); font-weight: 500; letter-spacing: -0.035em; line-height: 1.12; margin: 20px 0; text-wrap: balance; }
+.method h2 { display: flex; align-items: baseline; gap: 18px; font-size: 25px; font-weight: 500; margin: 0 0 24px; letter-spacing: -0.015em; }
+.method h2 > span { font: 12px var(--mono); color: var(--mute); letter-spacing: 0.03em; }
+.method p { max-width: 80ch; font-size: 16px; line-height: 1.85; color: var(--text-2); margin: 0 0 18px; text-wrap: pretty; }
+.method p.lede { max-width: 66ch; font-size: 19px; line-height: 1.7; color: var(--text-3); }
+.method__intro { padding: 14px 0 38px; }
+.method p.method__eyebrow { font: 11px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); margin: 0; }
+.method p.method__meta { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 28px 0 0; font: 12px var(--mono); color: var(--text-3); }
+.method__meta span { border-left: 1px solid var(--line-3); padding-left: 24px; }
+.method__section { border-top: 1px solid var(--line-2); padding: 36px 0 26px; }
+.method__detail { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 24px 0 10px; padding: 0 18px; background: var(--panel); }
+.method__detail summary { padding: 18px 0; cursor: pointer; color: var(--text); font-size: 15px; }
+.method__detail[open] summary { margin-bottom: 8px; }
+.method :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .method em { font-style: italic; }
 .method strong { color: var(--text); font-weight: 600; }
 .method code {
@@ -243,7 +253,8 @@ a { color: inherit; text-decoration: none; }
 }
 .method mjx-container { color: var(--text); }
 .method mjx-container[display="true"] { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
-.method .tblwrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); }
+.method .tblwrap { overflow-x: auto; margin: 24px 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
+.method caption { text-align: left; padding: 14px 12px; color: var(--mute); font-size: 12px; }
 .method table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .method th, .method td {
   text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line);
@@ -251,27 +262,38 @@ a { color: inherit; text-decoration: none; }
 }
 .method th {
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--dim);
+  text-transform: uppercase; color: var(--mute);
 }
 .method td:nth-child(3) { white-space: nowrap; font-family: var(--mono); font-size: 12.5px; }
-.method .fig {
-  margin: 22px 0 26px; border: 1px solid var(--line); background: var(--panel);
-  padding: 18px 16px 10px;
+.method-figure { margin: 32px 0; background: var(--panel); border: 1px solid var(--line); }
+.method-figure__scroll { overflow-x: auto; }
+.method-diagram { display: block; width: 100%; min-width: 740px; height: auto; }
+.method-figure figcaption { display: flex; align-items: baseline; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 13px; line-height: 1.6; }
+.method-figure__number { font: 11px var(--mono); color: var(--mute); }
+.method-figure figcaption > span:nth-child(2) { flex: 1; }
+.method-figure figcaption a { white-space: nowrap; font-size: 11px; color: var(--text-3); }
+/* Keep the reading page usable on narrow screens without changing other views. */
+@media (max-width: 1100px) {
+  body:has(.method) .top { position: static; }
+  body:has(.method) .masthead { flex-wrap: wrap; height: auto; gap: 12px 20px; padding-top: 12px; padding-bottom: 12px; }
+  body:has(.method) .wordmark { flex: 1; }
+  body:has(.method) .masthead__right { order: 1; }
+  body:has(.method) .nav { order: 2; flex-basis: 100%; height: 40px; }
+  body:has(.method) .session { order: 3; }
+  body:has(.method) .pulse { order: 4; }
 }
-.method .fig figcaption {
-  font-family: var(--mono); font-size: 12px; color: var(--mute);
-  line-height: 1.6; padding: 10px 6px 6px; border-top: 1px solid var(--line);
-  margin-top: 12px;
+@media (max-width: 640px) {
+  .method { padding-top: 0; }
+  .method h2 { font-size: 21px; gap: 12px; }
+  .method p { font-size: 15px; }
+  .method p.lede { font-size: 17px; }
+  .method__section { padding: 28px 0 18px; }
+  .method__meta span { padding-left: 0; border: 0; }
+  .method-figure { margin: 24px 0; }
+  .method-figure figcaption { flex-wrap: wrap; padding: 14px; gap: 10px; }
+  .method-figure figcaption > span:nth-child(2) { flex-basis: calc(100% - 32px); }
+  .method-figure figcaption a { margin-left: 26px; }
 }
-.mfig { width: 100%; height: auto; display: block; }
-.mfig text { fill: var(--text-2); font-family: var(--mono); font-size: 12.5px; }
-.mfig text.dim { fill: var(--dim); }
-.mfig .bx { fill: var(--ink); stroke: var(--line-3); stroke-width: 1; }
-.mfig .bx.lane { stroke: var(--exo); }
-.mfig .bx.canon { stroke: var(--sys); stroke-width: 2.4; }
-.mfig .bx.winfill { fill: var(--panel); stroke: var(--line-3); }
-.mfig .ln { stroke: var(--mute); stroke-width: 1.1; fill: none; }
-.mfig .mk { fill: var(--mute); }
 
 .nowrap { white-space: nowrap; }
 .citedtag {

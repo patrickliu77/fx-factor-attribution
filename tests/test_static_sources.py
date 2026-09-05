@@ -12,7 +12,8 @@ import re
 import fxdash.web.app as web_app
 
 STATIC = pathlib.Path(web_app.STATIC_DIR)
-OWN_FILES = ["index.html", "app.js", "charts.js", "i18n.js", "methodology.js", "style.css"]
+OWN_FILES = ["index.html", "app.js", "charts.js", "i18n.js", "methodology.js",
+             "methodology-figures.js", "style.css"]
 
 # a URL-bearing attribute, import, fetch or assignment whose value starts with "/"
 ROOT_URL = re.compile(r'(?:from |src=|href=|fetch\(|\.src\s*=\s*|url\()\s*["\']/(?!/)')
