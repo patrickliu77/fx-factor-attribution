@@ -160,6 +160,12 @@ export const DICT = {
   "fx.nostories": { en: "no stories", zh: "无报道" },
   "fx.storiesweek": { en: "stories on flagged days", zh: "条异常日报道" },
   "fx.newsmoving": { en: "News around {pair} flagged days", zh: "{pair} 异常日的报道" },
+  "fx.dayreturn": { en: "Day return", zh: "当日收益" },
+  "fx.daybasis": { en: "Saved daily attribution · log bp", zh: "已保存的当日归因 · 对数基点" },
+  "fx.viewdayanalysis": { en: "View day analysis", zh: "查看当日分析" },
+  "fx.hidedayanalysis": { en: "Hide day analysis", zh: "收起当日分析" },
+  "fx.nodayanalysis": { en: "No saved commentary is available for this date.", zh: "这一天没有可用的已保存短评。" },
+  "fx.citedstories": { en: "Cited reporting", zh: "引用的报道" },
   "fx.nonewsforpair": {
     en: "No flagged-day story cites this pair recently.",
     zh: "近期触发日中没有报道涉及这一对。",

@@ -155,6 +155,30 @@ def _round(value, digits):
     return None if value is None else round(float(value), digits)
 
 
+def _commentary_context(date: str, record: dict) -> dict:
+    """One saved analysis belongs to a pair-day, never to an individual source."""
+    facts = record.get("facts") or {}
+    evd = record.get("evidence") or {}
+    nar = record.get("narrative") or {}
+    return {
+        "date": date,
+        "event_kind": evd.get("event_kind"),
+        "coverage_check": evd.get("coverage_check"),
+        "continuity_check": evd.get("continuity_check"),
+        "assessment": evd.get("assessment"),
+        **{key: _round(facts.get(key), digits) for key, digits in (
+            ("residual_bp", 1), ("residual_z", 2), ("y_bp", 1),
+            ("systematic_bp", 1), ("exogenous_bp", 1),
+        )},
+        "window": facts.get("window"),
+        "provisional": facts.get("provisional"),
+        "why_unexplained": {
+            lang: ((nar.get(lang) or {}).get("why_unexplained") or "")
+            for lang in ("en", "zh")
+        },
+    }
+
+
 def cited_stories(days: list[dict]) -> list[dict]:
     """Evidence set for the cited stories, newest evidence first.
 
@@ -193,25 +217,7 @@ def cited_stories(days: list[dict]) -> list[dict]:
                 "event_kind": ev.get("event_kind"),
                 "assessment": ev.get("assessment"),
             })
-        evd = record.get("evidence") or {}
-        nar = record.get("narrative") or {}
-        entry["context"][pair] = {
-            "date": date,
-            "event_kind": evd.get("event_kind"),
-            "coverage_check": evd.get("coverage_check"),
-            "continuity_check": evd.get("continuity_check"),
-            "assessment": evd.get("assessment"),
-            "residual_bp": _round(facts.get("residual_bp"), 1),
-            "residual_z": _round(facts.get("residual_z"), 2),
-            "y_bp": _round(facts.get("y_bp"), 1),
-            # the second paragraph of the commentary that cited it: why the model
-            # says this day cannot be explained. Both languages are carried and
-            # the frontend picks by current locale (2026-09-02 ruling)
-            "why_unexplained": {
-                lang: ((nar.get(lang) or {}).get("why_unexplained") or "")
-                for lang in ("en", "zh")
-            },
-        }
+        entry["context"][pair] = _commentary_context(date, record)
 
     merged = _merge_near_duplicates(stories)
     items = list(merged.values())
@@ -348,7 +354,27 @@ def pair_evidence(days: list[dict], pair: str) -> dict:
             "context": story["context"].get(pair, {}),
             "duplicates": story.get("duplicates", []),
         })
-    return {"pair": pair, "count": len(items), "items": items}
+    # Keep the flat evidence set for older clients/counts. The FX panel consumes
+    # day-local groups: a URL reused on two days must retain each day's own prose,
+    # numbers and source snapshot. Cross-day dedup would lose that distinction.
+    groups = []
+    for day in sorted(days, key=lambda d: d.get("date") or "", reverse=True):
+        records = [r for r in day.get("pairs", [])
+                   if r.get("pair") == pair and r.get("published")]
+        if not records or not day.get("date"):
+            continue
+        stories = cited_stories([{"date": day["date"], "pairs": records}])
+        if not stories:
+            continue
+        groups.append({
+            "date": day["date"], "pair": pair,
+            "context": _commentary_context(day["date"], records[0]),
+            "items": [{key: s.get(key) for key in (
+                "url", "title", "source", "publisher_domain", "published",
+                "summary", "duplicates",
+            )} for s in stories],
+        })
+    return {"pair": pair, "count": len(items), "items": items, "days": groups}
 
 
 def story_counts(days: list[dict], pairs: list[str]) -> dict:

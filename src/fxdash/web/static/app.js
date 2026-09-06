@@ -12,6 +12,7 @@ import { researchHtml, researchOptions } from "./research.js";
 import { rankedContributions, residualFlag } from "./presentation.js";
 import { driversHtml } from "./context.js";
 import { briefingBoardHtml, bindBriefingBoard, refreshBriefingStatus } from "./briefing-board.js";
+import { distinctSummary, pairNewsDaysHtml, bindPairNewsDays } from "./pair-news.js";
 
 /* global echarts */
 
@@ -33,6 +34,7 @@ const state = {
   openPair: null,
   openStory: null,
   openExplain: null,
+  pairNewsViews: {},
   openHeadline: null,
   helpOpen: false,
   opinionsOpen: false,
@@ -379,10 +381,10 @@ function metaLine(item, dir) {
 // shown permanently. Its content is the relevant passage of the commentary that
 // cited it, plus that day's figures, not a restatement of internal system state.
 function hasExplain(ctx) {
-  return !!(ctx && (ctx.event_kind || (ctx.why_unexplained || {}).en));
+  return !!(ctx && (ctx.event_kind || (ctx.why_unexplained || {}).en || (ctx.why_unexplained || {}).zh));
 }
 
-function explainBlock(ctx, heading) {
+function explainBlock(ctx, heading, {showDay = true} = {}) {
   if (!hasExplain(ctx)) return "";
   const lang = getLang();
   const prose = (ctx.why_unexplained || {})[lang]
@@ -397,7 +399,7 @@ function explainBlock(ctx, heading) {
   const notes = [ctx.coverage_check || "", ctx.continuity_check || ""].filter(Boolean);
   return `<div class="explain">
     <div class="explain__k">${esc(heading)}</div>
-    <div class="explain__day">${esc(day)}</div>
+    ${showDay ? `<div class="explain__day">${esc(day)}</div>` : ""}
     ${prose ? `<div class="explain__t">${esc(prose)}</div>` : ""}
     ${notes.length ? `<div class="explain__t dim">${esc(notes.join(" "))}</div>` : ""}
     <div class="chips">${tags}</div></div>`;
@@ -426,10 +428,10 @@ function bindExplainButtons(scope, htmlOf) {
       const host = b.closest(".expand") || b.closest(".pairnews__item");
       if (!host) return;
       const existing = host.querySelector(".explain");
-      const wasOpen = state.openExplain === k;
-      if (existing) existing.remove();
+      const wasOpen = !!existing;
+      scope.querySelectorAll(".explain").forEach((node) => node.remove());
       state.openExplain = null;
-      host.querySelectorAll("[data-explain]").forEach((x) =>
+      scope.querySelectorAll("[data-explain]").forEach((x) =>
         x.setAttribute("aria-pressed", "false"));
       if (!wasOpen) {
         state.openExplain = k;
@@ -450,12 +452,13 @@ function evidenceLine(e) {
 }
 
 function storyExpandHtml(s, key) {
+  const summary = distinctSummary(s);
   return `<div class="expand">
     <div class="expand__top">
       <div class="expand__text">
         ${metaLine(s, (s.latest && s.latest.y_bp != null)
           ? (s.latest.y_bp > 0 ? "usd up" : "usd down") : null)}
-        <div class="summary">${esc(s.summary || t("news.nosummary"))}</div>
+        ${summary ? `<div class="summary">${esc(summary)}</div>` : ""}
         ${(s.evidence || []).map((e) =>
           `<div class="hint">${esc(evidenceLine(e))}</div>`).join("")}
         ${(s.duplicates || []).length ? `<div class="hint">${esc(t("news.alsoby"))}: ${
@@ -491,11 +494,12 @@ function storyRowHtml(s, key, ordinal) {
 }
 
 function headlineExpandHtml(h, key) {
+  const summary = distinctSummary(h);
   return `<div class="expand" style="padding-left:112px">
     <div class="expand__top">
       <div class="expand__text">
         ${metaLine(h, h.direction)}
-        <div class="summary">${esc(h.summary || t("news.nosummary"))}</div>
+        ${summary ? `<div class="summary">${esc(summary)}</div>` : ""}
       </div>
       ${actions(h, key, state.openExplain, null)}
     </div>
@@ -866,24 +870,8 @@ function cardHtml(pair, row, counts, robust) {
 
 function pairNewsHtml(pair, feed) {
   const items = feed.items || [];
-  const body = items.length ? items.map((n, i) => {
-    const key = `p:${pair}:${i}`;
-    return `<div class="pairnews__item">
-      <div class="expand__top">
-        <div class="expand__text">
-          ${metaLine(n, n.direction)}
-          <div class="title" style="font-size:17px;font-weight:500">${esc(n.title)}</div>
-          <div class="summary">${esc(n.summary || t("news.nosummary"))}</div>
-          ${(n.evidence || []).map((e) =>
-            `<div class="hint">${esc(evidenceLine(e))}</div>`).join("")}
-        </div>
-        ${actions(n, key, state.openExplain, n.context)}
-      </div>
-      ${state.openExplain === key
-        ? explainBlock(n.context, t("explain.headpair", { pair: label(pair) }))
-        : ""}
-    </div>`;
-  }).join("") : `<p class="empty">${esc(t("fx.nonewsforpair"))}</p>`;
+  const body = pairNewsDaysHtml(pair, feed, {esc, t, label, fmtBp1, metaLine, hasExplain, explainBlock,
+    dayState: state.pairNewsViews[pair]});
   const headlines = feed.headlines || [];
   const todayBlock = headlines.length ? `
     <div class="pairnews__today">
@@ -899,7 +887,7 @@ function pairNewsHtml(pair, feed) {
   return `<div class="pairnews">
     <div class="pairnews__head">
       <h2 class="sec">${esc(t("fx.newsmoving", { pair: label(pair) }))}</h2>
-      <div class="hint">${items.length} ${esc(t("fx.storiesweek"))}</div>
+      <div class="hint">${feed.count ?? items.length} ${esc(t("fx.storiesweek"))}</div>
     </div>
     <div class="col">${body}</div>
     ${todayBlock}
@@ -981,14 +969,9 @@ async function pageFX(view) {
   // Expand, legend and Explain all add and remove DOM in place, never a full
   // render(): a full repaint flashes Loading and disposes and rebuilds all six
   // price charts (the user explicitly rejected that behaviour)
-  let currentFeed = feed;
-  function bindPairNewsExplain() {
-    const panel = view.querySelector(".pairnews");
-    if (!panel) return;
-    bindExplainButtons(panel, (k) => {
-      const n = ((currentFeed || {}).items || [])[Number(k.split(":")[2])];
-      return explainBlock(n && n.context,
-        t("explain.headpair", { pair: label(state.openPair) }));
+  function bindPairPanel(pair) {
+    bindPairNewsDays(view.querySelector(".pairnews"), t, (saved) => {
+      state.pairNewsViews[pair] = saved;
     });
   }
   async function openPairPanel(pair) {
@@ -999,13 +982,12 @@ async function pageFX(view) {
     let f;
     try { f = await api(`/pairs/${pair}/news`); } catch (e) { f = { items: [] }; }
     if (state.openPair !== pair) return; // clicked elsewhere meanwhile; drop it
-    currentFeed = f;
     const i = pairs.indexOf(pair);
     const anchorPair = (i % 2 === 0 && i + 1 < pairs.length) ? pairs[i + 1] : pairs[i];
     const anchor = view.querySelector(`[data-card="${anchorPair}"]`);
     if (!anchor) return;
     anchor.insertAdjacentHTML("afterend", pairNewsHtml(pair, f));
-    bindPairNewsExplain();
+    bindPairPanel(pair);
   }
 
   view.querySelector("#helpbtn").onclick = () => {
@@ -1046,8 +1028,8 @@ async function pageFX(view) {
     });
   });
   // After a full repaint that arrives with a panel already expanded (model,
-  // window or language switch), Explain has to be rebound too
-  bindPairNewsExplain();
+  // window or language switch), day analysis buttons have to be rebound too
+  bindPairPanel(state.openPair);
   pairs.forEach(drawPrice);
 }
 

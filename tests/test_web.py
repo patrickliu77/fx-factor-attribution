@@ -1147,3 +1147,60 @@ def test_citation_matrix_groups_by_day_and_keeps_residual_off_the_cells(site):
         for c in row["cells"]:
             assert "residual_bp" not in c and "residual_z" not in c
     assert "belongs to the day" in m["note"]
+
+
+def test_pair_news_groups_keep_each_dates_own_analysis(site):
+    client, app = site
+    # The same URL is cited on two dates, with different saved facts and prose.
+    for date, bp, text in [(DATES[-2], -70.0, "Earlier analysis"),
+                           (DATES[-1], -151.3, "Latest analysis")]:
+        day = _narrative_day(date)
+        rec = day["pairs"][0]
+        rec["facts"].update(residual_bp=bp, systematic_bp=12.34,
+                            exogenous_bp=-4.56, window=126, provisional=True)
+        rec["narrative"]["en"] = {"why_unexplained": text}
+        rec["sources"][0]["published"] = DATES[-3]  # article date != flagged day
+        rec["sources"].append({"id": "S2", "url": f"https://example.com/{date}",
+                               "title": "Officials discuss revised policy framework",
+                               "source": "AP", "published": date})
+        rec["narrative"]["sources_used"].append("S2")
+        _write_narrative(app, day)
+    feed = client.get(f"/api/pairs/{PAIR_A}/news").json()
+    assert [g["date"] for g in feed["days"]] == [DATES[-1], DATES[-2]]
+    assert [g["context"]["residual_bp"] for g in feed["days"]] == [-151.3, -70.0]
+    assert [g["context"]["why_unexplained"]["en"] for g in feed["days"]] == [
+        "Latest analysis", "Earlier analysis"]
+    for g in feed["days"]:
+        assert g["pair"] == PAIR_A and g["context"]["date"] == g["date"]
+        assert g["context"]["systematic_bp"] == 12.3
+        assert g["context"]["exogenous_bp"] == -4.6
+        assert g["context"]["window"] == 126 and g["context"]["provisional"] is True
+        assert len(g["items"]) == 2
+        assert "https://example.com/story" in [s["url"] for s in g["items"]]
+        for s in g["items"]:
+            assert not {"context", "residual_bp", "y_bp", "direction"} & s.keys()
+
+
+def test_pair_news_groups_exclude_other_pairs_and_unpublished_days(site):
+    client, app = site
+    import copy
+    day = _narrative_day(DATES[-1])
+    other = copy.deepcopy(day["pairs"][0])
+    other["pair"] = PAIR_B
+    other["sources"][0]["url"] = "https://other.example/only"
+    other["sources"][0]["title"] = "Independent Australian labour report"
+    day["pairs"].append(other)
+    _write_narrative(app, day)
+    rejected = _narrative_day(DATES[-2])
+    rejected["pairs"][0]["published"] = False
+    _write_narrative(app, rejected)
+    feed = client.get(f"/api/pairs/{PAIR_A}/news").json()
+    assert len(feed["days"]) == 1
+    assert [s["url"] for s in feed["days"][0]["items"]] == ["https://example.com/story"]
+    assert feed["days"][0]["context"]["systematic_bp"] is None
+
+
+def test_pair_news_empty_groups_are_explicit(site):
+    client, _ = site
+    feed = client.get(f"/api/pairs/{PAIR_A}/news").json()
+    assert feed["days"] == [] and feed["items"] == [] and feed["count"] == 0

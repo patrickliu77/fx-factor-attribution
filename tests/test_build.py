@@ -89,7 +89,7 @@ def test_build_writes_assets_every_request_and_the_manifest(site_app, tmp_path):
     manifest = B.build(out, app=app)
 
     for name in ("index.html", "app.js", "i18n.js", "charts.js", "methodology.js",
-                 "methodology-figures.js", "research.js", "presentation.js", "context.js",
+                 "methodology-figures.js", "research.js", "presentation.js", "context.js", "pair-news.js",
                  "style.css", "fonts.css", "vendor/echarts.min.js", ".nojekyll", "build.json"):
         assert (out / name).exists(), name
 
