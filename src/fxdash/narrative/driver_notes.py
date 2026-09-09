@@ -226,6 +226,8 @@ def validate(note: dict, row: dict, sources: list[dict], cutoff: str) -> list[st
 def generate(packet: dict, client=None, max_calls=MAX_CALLS) -> list[dict]:
     if not 0 <= max_calls <= MAX_CALLS:
         raise ValueError("generation budget must be between zero and three calls")
+    if client is not None and hasattr(client, 'max_requests'):
+        client.max_requests = min(client.max_requests, len(client.attempts) + max_calls)
     rows = sorted((r for r in packet["pairs"] if r.get("y") is not None and r.get("leading")),
                   key=lambda r: (-abs(r["y"]), r["pair"]))[:min(max_calls, MAX_CALLS)]
     records = []
@@ -250,13 +252,17 @@ def generate(packet: dict, client=None, max_calls=MAX_CALLS) -> list[dict]:
         try:
             record["attempted"] = True
             before = len(getattr(client, "calls", []))
+            attempts_before = len(getattr(client, "attempts", []))
             raw = client.complete(SYSTEM, json.dumps(payload, ensure_ascii=False), SCHEMA)
             record["raw"] = raw
             record["errors"] = validate(raw, row, sources, packet["fetched_at"])
             record["published"] = not record["errors"] and raw["assessment"] != "insufficient_evidence"
         except Exception as exc:
             record["errors"] = [type(exc).__name__]  # never store provider URLs/key-bearing errors
+            from .client import failure_details
+            record['generation_failure'] = failure_details(exc)
         finally:
+            record['request_attempts'] = getattr(client, 'attempts', [])[attempts_before:]
             calls = getattr(client, "calls", [])[before:]
             record["usage"] = {key: sum(c.get(key) or 0 for c in calls) for key in
                                ("promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount", "totalTokenCount")}

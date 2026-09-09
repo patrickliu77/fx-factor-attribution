@@ -3,7 +3,8 @@
     Register a five-minute clock gate for the 09:00 New York text briefing.
 .DESCRIPTION
     Python evaluates America/New_York, including DST. Outside 08:50..10:00 ET
-    on weekdays the command exits without loading data, networking or writing.
+    on weekdays the command writes a local clock observation only. No networking,
+    generation or publishing. A missed weekday edition returns code 2.
     Collection starts at 08:50; publication starts at 09:00. Late starts cannot
     fabricate a morning input packet. Existing evening tasks are unchanged.
 #>
@@ -16,9 +17,10 @@ if (-not (Test-Path -LiteralPath $Python)) { throw "Pass -Python with the projec
 & $Python -c "from zoneinfo import ZoneInfo; import pandas, fastapi; ZoneInfo('America/New_York')"
 if ($LASTEXITCODE -ne 0) { throw "Interpreter dependencies or tzdata are missing." }
 $logDir = Join-Path $repo "outputs\logs"
-$command = "set PYTHONPATH=src && set PYTHONIOENCODING=utf-8 && " +
-           "`"$Python`" -m fxdash.narrative.morning_dispatch >> `"$logDir\briefing.log`" 2>&1"
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c $command" -WorkingDirectory $repo
+$windowlessPython = Join-Path (Split-Path -Parent $Python) "pythonw.exe"
+if (-not (Test-Path -LiteralPath $windowlessPython)) { throw "pythonw.exe is required for a windowless morning task." }
+$action = New-ScheduledTaskAction -Execute $windowlessPython `
+    -Argument ('"' + (Join-Path $repo "ops\run_briefing_task.py") + '"') -WorkingDirectory $repo
 # A bounded UTC window covers both NY offsets without waking the PC all night.
 # 12:50..15:00 UTC covers 08:50..10:00 in both EST and EDT. The Python gate makes
 # the extra hour idle. Explicit Z avoids dependence on the computer's time zone.

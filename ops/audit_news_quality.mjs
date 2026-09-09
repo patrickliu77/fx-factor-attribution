@@ -45,6 +45,9 @@ try {
     assert.equal(await slate.locator('a[href^="javascript:"]').count(),0);
     assert.equal(await slate.locator('.context-excluded a[href="https://example.com/0"]').count(),1);
     assert.ok(!(await slate.innerText()).includes('topic_not_clear_from_title_or_snippet'));
+    const policy=page.locator('.driver-context > .news-guide');
+    assert.equal(await policy.getAttribute('open'),null);
+    await policy.locator('summary').click();
     assert.ok((await page.locator('.context-policy').innerText()).includes(lang==='en' ? 'independent confirmation' : '独立证实'));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await pair.screenshot({path:path.join(out,`news-quality-${lang}-${width}.png`)});

@@ -67,6 +67,7 @@ def request_set(meta: dict) -> list[str]:
     canonical = f"?window={default_window}&model={default_model}"
     requests = [
         "/meta",
+        "/status",
         "/market/ticker",
         "/narrative/status",
         "/news",
@@ -80,6 +81,7 @@ def request_set(meta: dict) -> list[str]:
                  for p in pairs for w in windows for m in models]
     requests += [f"/pairs/{p}/news" for p in pairs]
     requests += [f"/research/comparison?window={w}" for w in windows]
+    requests += [f"/pca?window={w}" for w in windows]
     requests += [f"/market/series/{p}?range={r}" for p in pairs for r in MARKET_RANGES]
     return requests
 
@@ -175,8 +177,10 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
         requests[request] = rel
         if request == "/news":
             current = response.json().get("briefing") or {}
-            if current.get("mode") == "edition" and current.get("edition_hash"):
+            if current.get("mode") in {"edition", "catchup"} and current.get("edition_hash"):
                 briefing = {"date": current["date"], "edition_hash": current["edition_hash"]}
+                if current["mode"] == "catchup":
+                    briefing["mode"] = "catchup"
 
     moment = (now or datetime.now()).astimezone()
     manifest = {

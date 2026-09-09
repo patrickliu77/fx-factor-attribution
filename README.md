@@ -11,6 +11,10 @@ Attribution updates each evening. A weekday text edition is prepared for 09:00
 America/New_York. The page labels the attribution date, news retrieval time and
 publication status separately. It covers completed trading days.
 
+The [September 8 release notes](docs/RELEASE_20260908.md) record the current scope,
+verification and remaining operational work. Production model choices are unchanged;
+the [offline research findings](docs/RESEARCH_FINDINGS_20260908.md) explain why.
+
 ## How it works
 
 ![Market observations are aligned for each pair, fitted with three estimators, and saved as daily systematic, exogenous and residual contributions.](src/fxdash/web/static/figures/pipeline-en.svg)
@@ -63,6 +67,19 @@ scaled by the pair's recent residual size. Similar estimates may still leave a
 large residual, which has its own flag. The badges always refer to the latest
 daily 126-observation comparison. Rolling PCA and model health checks
 provide further context on common currency structure and changes in fit.
+
+Open **Market structure, PCA** on the Attribution page to inspect three saved
+diagnostics: PC1's share of standardised panel variance, its absolute correlation
+with the full-panel dollar basket, and carry's projection R² onto PC2 and PC3.
+The selected training window applies to this view; the regression model and
+return period do not. Each fit ends before its labelled record date.
+
+PCA is retained as a check on common currency structure. It does not compress
+the external factor matrix for regression or allocate daily returns. Its variance
+share is a property of the training panel, not a percentage of today's move.
+The monitoring baskets use the full panel; single-pair attribution excludes the
+target. Principal-component ranks carry no automatic economic names. Ridge
+handles coefficient shrinkage and post-Lasso handles factor selection.
 
 The current calculation revision is `2026-09-04.fold-local-cv-pca`. It corrects
 validation-fold preprocessing and applies correlation-PCA loadings to standardised
@@ -166,6 +183,23 @@ retries reuse the frozen edition; they never fetch replacement morning evidence.
 The job follows New York daylight saving time and requires the host to be running
 with its user signed in. GitHub Pages may take a few minutes to deploy the push.
 
+Outside the morning window, the scheduled entry saves a local clock observation
+without fetching, generating or publishing. A late weekday invocation returns
+code 2 when the day's readable briefing and matching push receipt are missing.
+A normal exit outside the window does not prove on-time delivery. Clock
+observations stay separate from the frozen editions and acceptance evidence.
+
+If the computer becomes available later, a separate catch-up task can generate a
+dated briefing after 09:05 New York time. It checks two minutes after login and
+every fifteen minutes while the host is available, without waking the computer.
+It waits for current saved attribution and usable news access. New evidence is
+timestamped when retrieved; the resulting text is labelled **Catch-up briefing**.
+It never counts as an on-time morning edition or replaces the original archive.
+One daily generation claim limits repeated model calls. Failed pushes retry the
+frozen text. When a readable morning edition already exists, only its missing
+push is retried. Register this optional task with
+`powershell -File ops/register_catchup_task.ps1`.
+
 Source ids, exact short excerpts, observation times, bilingual citations, numeric
 claims and wording are checked before a note is used. These checks cannot verify
 every paraphrase or establish causality. The model sees RSS titles and snippets,
@@ -177,7 +211,9 @@ Run `python -m fxdash.narrative.morning --mode preview` for an explicitly labell
 validation preview. Register the clock gate with
 `powershell -File ops/register_briefing_task.ps1`; the operations manual explains
 the schedule and failure handling. Preview runs are never historical editions.
-The first natural morning run still needs observation. Free-form AI outlooks are
+As of September 8, the five-consecutive-weekday morning acceptance is still 0/5.
+The saved afternoon catch-up and manual recovery do not count as on-time editions.
+Free-form AI outlooks are
 withheld: validation samples inferred policy effects unsupported by the retrieved
 titles. Richer event evidence and semantic evaluation are needed before that
 section can run automatically. Audio and multi-agent delivery remain future work.
@@ -236,6 +272,13 @@ alignment, `factors/` builds the panels, `models/` fits the estimators, and
 Run the offline suite with `python -m pytest`. Scheduling, history rewrite flags
 and publishing are documented in [ops/README.md](ops/README.md).
 
+The release was verified with Python 3.13.5, the pinned packages, and Node.js
+24.15.0. Some offline tests execute frontend JavaScript through Node; the Python
+requirements file does not install it. Browser acceptance scripts also need
+Playwright and a Chromium installation. They are separate from running the server.
+For the small regression matrices, the verification run limits BLAS/OpenMP threads
+to one in the test process; this does not change the scheduled production environment.
+
 The Methodology illustrations are original SVGs. Their shared drawing source is
 [`methodology-figures.js`](src/fxdash/web/static/methodology-figures.js); regenerate
 the standalone files with `node ops/render_methodology_figures.mjs` after an edit.
@@ -244,3 +287,23 @@ labels. Font files are served locally and embedded in the SVG exports, so the
 README images keep the same typefaces. Chinese text uses the same system font
 fallbacks as the website. Font sources and licenses are in
 [`static/fonts/`](src/fxdash/web/static/fonts/README.md).
+
+## Run reliability
+
+The live task uses a windowless supervisor. Each attempt has its own start record,
+exit result and unbuffered worker log under `outputs/task_runs/live/`. Native Python
+crashes are recorded by the supervising process. The dashboard shows the latest
+attempt separately from the last successful calculation, attribution date and
+provisional row count. A static page reports what its build observed.
+
+To update an existing live task while preserving its trigger, account and settings:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ops/configure_live_entry.ps1
+```
+
+Gemini failures keep a safe category, stage, HTTP status where available, and timing.
+Explicit transient HTTP failures may retry within the existing request budget.
+Ambiguous transport failures, daily quota exhaustion and invalid requests do not
+automatically retry. Provider error text and credentials are excluded from these
+records. Frozen briefings remain unchanged after an API failure.

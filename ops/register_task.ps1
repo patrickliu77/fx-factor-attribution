@@ -73,13 +73,13 @@ Write-Host "Repo   : $repo"
 Write-Host "Python : $Python ($($resolved.Source))"
 Write-Host "Time   : daily at $At local time"
 
-# Wrapped in cmd so PYTHONPATH can be set; logs land in outputs/logs/
+# Windowless supervisor owns the child environment and per-attempt logs.
 $logDir = Join-Path $repo "outputs\logs"
-$command = "set PYTHONPATH=src && `"$Python`" -W ignore -m fxdash.run --mode live " +
-           ">> `"$logDir\live.log`" 2>&1"
-
-$action = New-ScheduledTaskAction -Execute "cmd.exe" `
-    -Argument "/c $command" -WorkingDirectory $repo
+$pythonWindowless = Join-Path (Split-Path -Parent $Python) 'pythonw.exe'
+if (-not (Test-Path -LiteralPath $pythonWindowless)) { throw 'pythonw.exe is required for the scheduled entry.' }
+$entry = Join-Path $repo 'ops\run_live_task.py'
+$action = New-ScheduledTaskAction -Execute $pythonWindowless `
+    -Argument ('"' + $entry + '"') -WorkingDirectory $repo
 
 $trigger = New-ScheduledTaskTrigger -Daily -At $At
 

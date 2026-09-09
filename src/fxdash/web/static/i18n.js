@@ -16,6 +16,13 @@ export const DICT = {
   "theme.dark": { en: "Switch to dark", zh: "切换到深色" },
 
   "tape.session": { en: "SESSION", zh: "交易日" },
+  "news.relatedsources": { en: "More reporting on this event", zh: "同一事件的其他报道" },
+  "news.sameflag": { en: "Other reporting for this flagged day", zh: "这个异常日的其他报道" },
+  "news.sameflagnote": { en: "These reports were cited for the same currency and date. They may describe different developments or interpretations.", zh: "这些报道被同一货币、同一日期的短评引用，可能涉及不同进展或观点。" },
+  "news.moreevents": { en: "More events", zh: "展开其余事件" },
+  "news.readingguide": { en: "About this selection", zh: "这份列表怎么看" },
+  "news.systemdetails": { en: "System updates", zh: "系统更新记录" },
+  "news.groupingnote": { en: "Similar same-day reports share one entry. Open a headline for other sources. Grouping uses titles; distinct updates and conflicting figures are kept separate. Repeated coverage does not establish independent confirmation.", zh: "同日相近报道合为一个入口，展开标题可查看其他来源。分组依据标题，保留后续更新和数字冲突的报道。多家转载不代表独立证实。" },
 
   "pulse.label": { en: "NARRATIVE", zh: "叙事层" },
   "pulse.never": { en: "never run", zh: "从未运行" },
@@ -129,7 +136,22 @@ export const DICT = {
     en: "No day was flagged inside the current window.",
     zh: "本周窗口内没有触发日。",
   },
-  "news.side.pairs": { en: "Daily changes, five-session charts", zh: "单日涨跌与五日走势" },
+  "news.side.pairs": { en: "FX daily snapshot", zh: "汇率日频概览" },
+  "mini.daily": { en: "1D", zh: "单日" },
+  "mini.points": { en: "{count} daily quotes", zh: "最近 {count} 个日频报价" },
+  "mini.asof": { en: "Daily quotes as of {date}", zh: "报价日期 {date}" },
+  "mini.mixed": { en: "Quote dates vary; shown on each card", zh: "报价日期不同，见各卡片" },
+  "mini.pending": { en: "Loading daily quotes", zh: "正在读取日频报价" },
+  "mini.unavailable": { en: "Daily chart unavailable", zh: "日频走势暂不可用" },
+  "mini.nodate": { en: "Quote date unavailable", zh: "报价日期暂不可用" },
+  "mini.note": {
+    en: "1D compares the last two daily quotes; only that segment is colored. Each chart has its own scale. Up means a stronger USD.",
+    zh: "单日涨跌比较最近两次日频报价，仅末段着色。各图独立缩放；上升表示美元走强。",
+  },
+  "mini.description": {
+    en: "{pair}: {price} as of {date}. 1D {change}, from {previous} to {date}. Chart: {count} daily quotes from {start} to {date}.",
+    zh: "{pair}，{date} 报价 {price}。单日涨跌 {change}，比较 {previous} 与 {date}。图示 {start} 至 {date} 的 {count} 个日频报价。",
+  },
   "news.side.flagged": { en: "Flagged days", zh: "触发日" },
   "news.side.noflag": { en: "No flagged day this week.", zh: "本周没有触发日。" },
   "news.side.note": {

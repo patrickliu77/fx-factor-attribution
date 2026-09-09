@@ -10,3 +10,6 @@ __pycache__/
 /outputs/
 # static site build (python -m fxdash.web.build), published from gh-pages
 /site/
+
+# Private interview notes are not part of the public source release.
+/notes/

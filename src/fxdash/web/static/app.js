@@ -9,10 +9,12 @@ import { t, getLang, setLang } from "./i18n.js";
 import * as CH from "./charts.js";
 import { methodologyHtml } from "./methodology.js";
 import { researchHtml, researchOptions } from "./research.js";
+import { structureShell, structureHtml, structureOptions } from "./structure.js";
 import { rankedContributions, residualFlag } from "./presentation.js";
 import { driversHtml } from "./context.js";
 import { briefingBoardHtml, bindBriefingBoard, refreshBriefingStatus } from "./briefing-board.js";
 import { distinctSummary, pairNewsDaysHtml, bindPairNewsDays } from "./pair-news.js";
+import {runtimeHtml, runtimeState} from './runtime-status.js';
 
 /* global echarts */
 
@@ -258,9 +260,9 @@ function healthPanel() {
   const dot = (st) => `<i style="background:var(--${
     st === "green" ? "up" : st === "yellow" ? "res" : st === "red" ? "down" : "mute"})"></i>`;
   const stampText = (v) => v ? stampLabel(v) : t("pulse.never");
-  const row = (label, stamp, note) => {
+  const row = (label, stamp, note, forcedState=null) => {
     const age = ageHours(stamp);
-    return `<div class="health__row">${dot(stateOf(age, warn, crit))}
+    return `<div class="health__row">${dot(forcedState || stateOf(age, warn, crit))}
       ${esc(label)} <b>${esc(stampText(stamp))}</b>
       <span>${esc(t("pulse.age"))} ${esc(ageText(age))}</span>
       ${note ? `<span>${esc(note)}</span>` : ""}
@@ -272,7 +274,7 @@ function healthPanel() {
         <span>${esc(t("pulse.build.live"))}</span></div>`;
   return `<div class="health">
     ${row(t("pulse.pipeline"), p.last_live_success,
-      p.reasons && p.reasons.length ? p.reasons.join("; ") : "")}
+      p.reasons && p.reasons.length ? p.reasons.join("; ") : "", runtimeState(state.runtime).tone)}
     ${s ? row(t("pulse.label"), s.last_run,
       `${t("pulse.thresholds", { warn, crit })}, ${s.days_on_record} ${t("pulse.days")}`)
       : `<div class="health__row">${dot("red")} ${esc(t("pulse.label"))}
@@ -461,8 +463,7 @@ function storyExpandHtml(s, key) {
         ${summary ? `<div class="summary">${esc(summary)}</div>` : ""}
         ${(s.evidence || []).map((e) =>
           `<div class="hint">${esc(evidenceLine(e))}</div>`).join("")}
-        ${(s.duplicates || []).length ? `<div class="hint">${esc(t("news.alsoby"))}: ${
-          esc(s.duplicates.map((d) => d.source || d.title).join(", "))}</div>` : ""}
+        ${eventSourcesHtml(s)}
       </div>
       ${actions(s, key, state.openExplain, (s.context || {})[(s.pairs || [])[0]])}
     </div>
@@ -493,6 +494,31 @@ function storyRowHtml(s, key, ordinal) {
   </div>`;
 }
 
+function eventSourcesHtml(item) {
+  const sources = (item.duplicates || []).filter(s => /^https?:\/\//i.test(s.url || ''));
+  if (!sources.length) return '';
+  return `<details class="event-sources"><summary>${esc(t('news.relatedsources'))} (${sources.length})</summary>${sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}<small>${esc(s.source || '')} · ${esc(s.published || '')} ↗</small></a>`).join('')}</details>`;
+}
+
+function compactNews(rows, limit) {
+  if (rows.length <= limit) return rows.join('');
+  return rows.slice(0,limit).join('') + `<details class="news-more"><summary>${esc(t('news.moreevents'))} (${rows.length-limit})</summary>${rows.slice(limit).join('')}</details>`;
+}
+
+function flaggedGroupsHtml(stories) {
+  const groups = new Map();
+  stories.forEach(s => {
+    const key = `${s.latest?.date || s.published || ''}:${(s.pairs || []).slice().sort().join(',')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  });
+  let ordinal = 0;
+  return compactNews([...groups.values()].map(items => {
+    const rows = items.map(s => storyRowHtml(s, 's:'+s.url, ++ordinal));
+    return rows[0] + (rows.length>1 ? `<details class="news-more news-coverage"><summary>${esc(t('news.sameflag'))} (${rows.length-1})</summary><p class="stack-note">${esc(t('news.sameflagnote'))}</p>${rows.slice(1).join('')}</details>` : '');
+  }), 5);
+}
+
 function headlineExpandHtml(h, key) {
   const summary = distinctSummary(h);
   return `<div class="expand" style="padding-left:112px">
@@ -500,6 +526,7 @@ function headlineExpandHtml(h, key) {
       <div class="expand__text">
         ${metaLine(h, h.direction)}
         ${summary ? `<div class="summary">${esc(summary)}</div>` : ""}
+        ${eventSourcesHtml(h)}
       </div>
       ${actions(h, key, state.openExplain, null)}
     </div>
@@ -547,7 +574,7 @@ async function pageNews(view) {
   // day, but **always with its date**, never passing it off as this week
   const inlineStories = stories.filter(keepInline);
   const storyRows = inlineStories.length
-    ? inlineStories.map((s, i) => storyRowHtml(s, "s:" + s.url, i + 1)).join("")
+    ? flaggedGroupsHtml(inlineStories)
     : `<p class="empty">${esc(t("news.emptyweek"))}</p>` + (fb ? `
       <details class="archive">
         <summary>${esc(t("news.fallback.title", { date: fb.date }))}</summary>
@@ -597,18 +624,19 @@ async function pageNews(view) {
   const emptyMsg = (news.today.errors || []).length ? t("news.feedfail")
     : isFetched ? t("news.notodayyet") : t("news.empty");
   const headRows = heads.length
-    ? heads.map((h, i) => headlineRow(h, "h:" + i)).join("")
+    ? compactNews(heads.map((h, i) => headlineRow(h, "h:" + i)), 6)
     : `<p class="empty">${esc(emptyMsg)}</p>`;
   const earlierRows = earlier.map((h, i) => headlineRow(h, "e:" + i)).join("");
   const opinionRows = opinions.map((h, i) => headlineRow(h, "o:" + i)).join("");
 
-  const minis = pairs.map((p) => `<button class="mini" type="button" data-mini="${p}">
+  const minis = pairs.map((p) => `<button class="mini" type="button" data-mini="${p}" aria-describedby="mini-note">
       <div class="mini__head">
         <div class="mini__name">${esc(label(p))}</div>
         <div class="mini__chg" data-chg="${p}"></div>
       </div>
       <div class="mini__px" data-px="${p}"></div>
-      <div class="mini__spark" data-spark="${p}"></div>
+      <div class="mini__spark" data-spark="${p}" aria-hidden="true"></div>
+      <div class="mini__basis"><span data-mini-basis>${esc(t("mini.pending"))}</span><span class="mini__date" data-mini-date hidden></span></div>
     </button>`).join("");
 
   const todayHint = [news.today.date, `${heads.length} ${t("news.items")}`]
@@ -621,11 +649,10 @@ async function pageNews(view) {
     <div class="news">
       <section class="news__main">
         ${briefingBoardHtml(news.briefing, news.briefing_archive, build)}
-        ${driversHtml(news.drivers)}
         <div class="col gap20">
           <div>
             <h1 class="page">${esc(t("news.week.title"))}</h1>
-            <p class="lede">${esc(t("news.week.blurb"))}</p>
+            <details class="news-guide"><summary>${esc(t('news.readingguide'))}</summary><p class="stack-note">${esc(t("news.week.blurb"))}</p><p class="stack-note">${esc(t('news.groupingnote'))}</p></details>
             ${news.week_start ? `<div class="hint">${esc(t("news.week.window",
               { start: news.week_start, end: news.week_end }))}</div>` : ""}
           </div>
@@ -634,12 +661,12 @@ async function pageNews(view) {
               <div>${esc(t("news.col.pairs"))}</div><div class="r">${esc(t("news.col.flagged"))}</div></div>
             ${storyRows}
           </div>
-          ${earlier.length ? `<div class="col gap14" style="margin-top:16px">
+          ${earlier.length ? `<details class="news-more"><summary>${esc(t("news.earlier"))} (${earlier.length})</summary><div class="col gap14">
             <div class="between"><h2 class="sec">${esc(t("news.earlier"))}</h2>
               <div class="hint">${esc(news.earlier.start)}, ${earlier.length} ${esc(t("news.items"))}</div></div>
             <div class="col">${earlierRows}</div>
             <p class="stack-note">${esc(t("news.earliernote"))}</p>
-          </div>` : ""}
+          </div></details>` : ""}
         </div>
         <div class="col gap14">
           <div class="between"><h2 class="sec">${esc(todayTitle)}</h2>
@@ -656,12 +683,14 @@ async function pageNews(view) {
             <p class="stack-note">${esc(t("news.opinionsnote"))}</p>
           </div>` : ""}
         </div>
-        ${healthPanel()}
+        ${driversHtml(news.drivers)}
       </section>
       <aside class="news__side">
         <div class="col gap14">
           <h3 class="side">${esc(t("news.side.pairs"))}</h3>
+          <p class="mini-board__asof" data-mini-asof>${esc(t("mini.pending"))}</p>
           <div class="minigrid">${minis}</div>
+          <p class="mini-board__note" id="mini-note">${esc(t("mini.note"))}</p>
         </div>
         <div class="col gap14">
           <h3 class="side">${esc(t("news.side.flagged"))}</h3>
@@ -672,6 +701,7 @@ async function pageNews(view) {
             : `<p class="empty">${esc(t("news.side.noflag"))}</p>`}
           <p class="stack-note">${esc(t("news.side.note"))}</p>
         </div>
+        <details class="news-guide"><summary>${esc(t('news.systemdetails'))}</summary>${healthPanel()}</details>
       </aside>
     </div>`;
 
@@ -735,21 +765,54 @@ async function pageNews(view) {
     b.onclick = () => { location.hash = "#/fx"; };
   });
 
-  pairs.forEach(async (p) => {
+  const miniAsOf = view.querySelector("[data-mini-asof]");
+  const miniCards = [...view.querySelectorAll("[data-mini]")];
+  await Promise.all(pairs.map(async (p) => {
+    const card = miniCards.find((el) => el.dataset.mini === p);
     const q = (state.quotes && state.quotes.items.find((x) => x.pair === p)) || null;
-    const chg = view.querySelector(`[data-chg="${p}"]`);
-    const px = view.querySelector(`[data-px="${p}"]`);
+    const chg = card.querySelector(`[data-chg="${p}"]`);
+    const px = card.querySelector(`[data-px="${p}"]`);
+    const basis = card.querySelector("[data-mini-basis]");
+    const date = card.querySelector("[data-mini-date]");
     if (q) {
-      chg.textContent = t("price.daily") + " " + fmtPct(q.chg_pct);
+      chg.textContent = t("mini.daily") + " " + fmtPct(q.chg_pct);
       chg.style.color = dirColor(q.direction);
       px.textContent = fmtLevel(q.last, q.digits);
+      date.textContent = q.date || t("mini.nodate");
+      card.dataset.quoteDate = q.date || "";
+    } else {
+      chg.textContent = t("mini.daily") + " n/a";
+      px.textContent = "n/a";
+      date.textContent = t("mini.nodate");
     }
     try {
       const data = await api(`/market/series/${p}?range=5d`);
-      if (data.available) mount(view.querySelector(`[data-spark="${p}"]`),
-        CH.sparkOption(data), "spark:" + p);
-    } catch (e) { /* no sparkline: leave it blank, main column unaffected */ }
-  });
+      if (!card.isConnected) return;
+      const observed = CH.sparkObservation(data);
+      if (observed) {
+        chg.textContent = t("mini.daily") + " " + fmtPct(observed.changePct);
+        chg.style.color = dirColor(observed.direction);
+        px.textContent = fmtLevel(observed.last, data.digits ?? 4);
+        date.textContent = observed.date;
+        card.dataset.quoteDate = observed.date;
+        const description = t("mini.description", { pair: label(p), price: px.textContent,
+          change: fmtPct(observed.changePct), date: observed.date, previous: observed.previousDate,
+          start: observed.startDate, count: observed.count });
+        card.setAttribute("aria-label", description);
+        card.title = description;
+        basis.textContent = t("mini.points", { count: observed.count });
+        mount(card.querySelector(`[data-spark="${p}"]`), CH.sparkOption(data), "spark:" + p);
+        return;
+      }
+    } catch (e) { /* Keep the dated quote fallback; never imply a missing chart is flat. */ }
+    basis.textContent = t("mini.unavailable");
+  }));
+  if (!miniAsOf.isConnected) return;
+  const dates = miniCards.map((card) => card.dataset.quoteDate || "");
+  const sameDate = dates.length > 0 && dates.every((date) => date && date === dates[0]);
+  miniAsOf.textContent = sameDate ? t("mini.asof", { date: dates[0] })
+    : dates.some(Boolean) ? t("mini.mixed") : t("mini.nodate");
+  miniCards.forEach((card) => { card.querySelector("[data-mini-date]").hidden = sameDate; });
 }
 
 /* ------------------------------------------------------------------ FX */
@@ -1187,9 +1250,30 @@ async function pageAttribution(view) {
         <div class="matrix-scroll" tabindex="0" role="region" aria-label="${esc(t("attr.matrix"))}">${matrixHtml}</div>
         <div class="matrix-mobile">${matrixCards || `<p class="empty">${esc(t("attr.nomatrix"))}</p>`}</div>
       </div>
+      ${structureShell()}
     </div></article>`;
   bindControls(view);
   view.querySelectorAll("#periodctl button").forEach(b=>b.onclick=()=>{state.period=Number(b.dataset.days);render();});
+  const structure = view.querySelector("#market-structure");
+  const selectedWindow = state.window;
+  let structureData = null, loadingStructure = false;
+  structure.addEventListener("toggle", async () => {
+    if (!structure.open || loadingStructure) return;
+    if (!structureData) {
+      loadingStructure = true;
+      try { structureData = await api(`/pca?window=${selectedWindow}`); }
+      catch { structureData = {available:false}; }
+      finally { loadingStructure = false; }
+      if (!structure.isConnected) return;
+      structure.querySelector(".structure__body").innerHTML = structureHtml(structureData);
+    }
+    if (!structure.open || !structure.isConnected) return;
+    for (const [key, option] of Object.entries(structureOptions(structureData))) {
+      const id = "structure:" + key;
+      if (charts.has(id)) charts.get(id).resize();
+      else mount(structure.querySelector(`[data-structure="${key}"]`), option, id);
+    }
+  });
 }
 
 async function pageResearch(view, pair) {
@@ -1254,6 +1338,7 @@ async function render() {
   renderNav(route);
   renderFooter();
   view.innerHTML = `<p class="empty">${esc(t("loading"))}</p>`;
+  await renderRuntime();
   try {
     if (!state.meta) state.meta = await api("/meta");
     if (state.meta.windows && !state.meta.windows.includes(state.window)) {
@@ -1273,6 +1358,17 @@ async function render() {
 }
 
 let resizeTimer;
+async function renderRuntime() {
+  const el=document.getElementById('runtime-status');
+  if (!el) return;
+  const open=el.querySelector('details')?.open;
+  if (build.mode==='live' || !state.runtime) {
+    try { state.runtime=await api('/status'); } catch { state.runtime=null; }
+  }
+  el.innerHTML=runtimeHtml(state.runtime,build);
+  el.querySelector('details').open=!!open;
+  el.hidden=false;
+}
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => charts.forEach((c) => c.resize()), 140);
@@ -1291,6 +1387,10 @@ window.addEventListener("hashchange", render);
   // file; a static build has neither, so only the ages are recomputed there
   setInterval(() => {
     refreshBriefingStatus();
+    renderRuntime().then(()=>{
+      const health=document.querySelector('.health');
+      if (health) health.outerHTML=healthPanel();
+    });
     if (build.mode === "live") renderTape();
     renderPulse();
     renderBuilt();

@@ -73,7 +73,7 @@ def test_request_set_covers_every_page(site_app):
     pairs, windows, models = meta["pairs"], meta["windows"], meta["models"]
     # 4 fixed + overview and daily at the canonical basis + weekly per combination
     # + a news feed per pair + a price series per pair and range
-    expected = (4 + 2 + 3 * len(windows) * len(models) + len(pairs) + len(windows)
+    expected = (5 + 2 + 3 * len(windows) * len(models) + len(pairs) + 2 * len(windows)
                 + len(pairs) * len(MARKET_RANGES)
                 + len(pairs) * len(windows) * len(models))
     assert len(reqs) == expected == len(set(reqs))

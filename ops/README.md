@@ -1,19 +1,18 @@
 # Operations
 
-Scheduling runs on the local Windows Task Scheduler. GitHub Actions was rejected
-for one decisive reason: cache persistence. `data/cache/` is gitignored, and a
-runner starts from nothing every time, which would remove the second step of the
-three-step acquisition fallback (online, then cache, then a local user file).
+Scheduling currently runs on Windows Task Scheduler with persistent local data.
+A hosted runner would need explicit durable storage for cache, input archives and
+frozen editions. The present deployment has not implemented that storage layer.
 
-Three independent evening tasks, plus the morning text job described below:
+Three independent evening tasks, plus the morning and catch-up jobs described below:
 
 | | Attribution pipeline | Narrative layer | Site publish |
 |---|---|---|---|
 | Task name | `fxdash-live` | `fxdash-narrative` | `fxdash-publish` |
 | Time (local) | 19:30 | 20:15 | 20:45 |
-| Entry point | `fxdash.run` | `fxdash.narrative.run` | `ops/publish.ps1` |
+| Entry point | `ops/run_live_task.py` | `fxdash.narrative.run` | `ops/publish.ps1` |
 | Status file | `outputs/status.json` | `outputs/narrative/status.json` | `site/build.json` |
-| Log | `outputs/logs/live.log` | `outputs/logs/narrative.log` | `outputs/logs/publish.log` |
+| Log | `outputs/task_runs/live/<run_id>/worker.log` | `outputs/logs/narrative.log` | `outputs/logs/publish.log` |
 
 They are separate on purpose. The narrative layer goes online and calls an LLM,
 and both of those are flaky. Folding it into the pipeline would let one network
@@ -47,10 +46,10 @@ is a default that no such list would mention.
 
 ### Why 19:30 local
 
-The machine runs on US Central Time, so 19:30 local is 20:30 ET. The day's FX
-bars close at 17:00 ET, the US close-based factors (FRED DGS, VIX, credit
-spreads) publish between 16:15 and 18:00 ET, and foreign yields land earlier, so
-every input exists by then. A full recompute takes about 10 minutes, leaving
+The machine runs on US Central Time, so 19:30 local is 20:30 ET. This leaves
+time after the project's daily FX cutoff and the usual US publication window.
+Source delays still occur: availability is checked at runtime, with fallback and
+provisional flags where appropriate. A full recompute usually takes minutes, leaving
 roughly 12.5 hours before the 09:00 ET cutoff the next morning: enough to absorb
 a slow source and the retry schedule (every 15 minutes, at most 3 attempts).
 
@@ -183,8 +182,9 @@ log, cache, or artifact.
   non-ASCII text irreversibly and adds a BOM, and the edit looks like it
   succeeded. Use Python or an editor instead; keep PowerShell for running
   processes.
-- **`live.log` is written in the console code page, not UTF-8**, because the task
-  redirects stdout through `cmd.exe`. A normal run emits only ASCII, and paths
+- **Historical `live.log` uses the console code page.** The old task redirected
+  stdout through `cmd.exe`; the current supervisor writes UTF-8 `worker.log` files.
+  For the old log, a normal run emits only ASCII, and paths
   are printed repository-relative for exactly this reason, so the encoding is
   invisible in day-to-day reading. It surfaces only in a traceback, whose file
   paths follow wherever the repository is checked out; read such a log with
@@ -234,13 +234,14 @@ under a project path, which is why every URL in it is relative. Headlines and
 the dollar index are therefore snapshots taken at build time, and the page
 says when they were fetched rather than calling them live.
 
-The current request set contains 144 responses: the Attribution page includes
+The current request set contains 148 responses: the Attribution page includes
 1, 5 and 21 observation totals for each estimator and window, and the pair
 research pages include 252 saved observations for each combination. The builder
 does not export the full coefficient history. Three additional comparison files
 summarise matched final observations for each training window, including full
-history and the latest 252 shared observations. The 2026-09-04 build's JSON payload
-is about 7.2 MiB before compression, loaded by page and selection.
+history and the latest 252 shared observations. Three PCA window files and one
+runtime status file complete the current request set. The September 8 build's JSON
+payload is about 9 MB before compression, loaded by page and selection.
 
 Boundaries are the web layer's: read `outputs/` and `data/cache/` only, write
 only `site/`, never touch either status.json. A publish failure is this task's
@@ -277,15 +278,18 @@ output directory. Automated tests inject clocks only with isolated temporary dat
 
 `fxdash-briefing` uses a five-minute weekday trigger in the bounded 12:50..15:00 UTC
 window. Python's `America/New_York` gate handles both daylight saving offsets:
-08:50..08:59 collects, 09:00..09:59 publishes, all other times exit without network
-or output writes. Install `tzdata` on Windows if the interpreter has no IANA time
+08:50..08:59 collects, 09:00..09:59 publishes. Outside those windows, the scheduled
+entry may save a clock observation but does not collect, generate or publish.
+Install `tzdata` on Windows if the interpreter has no IANA time
 zone database. Keep the user signed in. WakeToRun cannot start a powered-off host.
 
 Each day has its own `outputs/briefing/days/YYYY-MM-DD/` directory. `prepare.claim`
 limits collection and model spending to one attempt. `packet.json` is saved before
 generation; `draft.json` retains input hash, raw replies, prompt version, model,
-usage and failed checks. At most three model calls are made, with a 45-second
-timeout each and no generation retries. A terminated preparation remains claimed;
+usage and failed checks. At most three HTTP generation requests are made in total,
+with a 45-second timeout per request. Explicit transient HTTP errors can retry once
+within that same budget. Ambiguous transport failures, exhausted daily quotas and
+invalid requests are not automatically resent. A terminated preparation remains claimed;
 the 09:00 step uses the available packet and falls back to numbers if necessary.
 
 `edition.json` is frozen once. It requires the preceding FX weekday's attribution
@@ -436,3 +440,76 @@ Kept here because each one was invisible to the checks that existed at the time.
 - **The first public build dropped the whole data-acquisition package.** See
   Publishing above. Fixed by anchoring the ignore rules at the repository root
   (`/data/`, `/outputs/`) and by adopting the clone-and-test step. 2026-09-04.
+
+## Live supervision and recovery
+
+The live registration now launches `pythonw.exe` with `ops/run_live_task.py`.
+To update an existing task without changing its account, triggers, power settings
+or retry policy, use `powershell -File ops/configure_live_entry.ps1 -WhatIf`, then
+run the same command without `-WhatIf` after reviewing it. The installer saves
+the before/after task definitions and refuses a currently running task.
+
+The standard-library supervisor starts a hidden calculation subprocess with
+faulthandler and unbuffered UTF-8 output. Each attempt writes under
+`outputs/task_runs/live/<run_id>/`: `start.json`, `worker.log`, and `finish.json`.
+`latest.json` describes the latest attempt; `last_success.json` retains the last
+successful data identity. An exit code of zero also needs a new live success
+marker before completion is accepted. The worker timeout is 115 minutes.
+
+The website's `/api/status` combines attempt state and saved-data freshness.
+Running attempts with an expired deadline become interrupted observations. A
+recent successful calculation does not hide a later crash. GitHub Pages can only
+show the attempt observed at build time; it has no live connection to the scheduler.
+Native failure on September 8 was not reproduced by replay. Root cause is still
+unresolved; logs and exit-code tests establish visibility, not elimination of the fault.
+
+## Login catch-up and formal acceptance
+
+```powershell
+powershell -File ops/register_catchup_task.ps1 -WhatIf
+powershell -File ops/register_catchup_task.ps1
+python -m fxdash.narrative.acceptance --start-date 2026-09-08
+python -m fxdash.operations
+```
+
+Catch-up checks two minutes after login and every fifteen minutes while the host
+is available. It does not wake the computer. On New York weekdays after 09:05,
+it reuses an existing readable edition or waits for current attribution and usable
+news before preparing a late edition. Its files live under
+`outputs/briefing/catchup/YYYY-MM-DD/`. It does not replace the morning archive,
+recreate missed historical editions, or count toward on-time acceptance.
+
+Each day has one generation claim. Retrying a push reuses frozen text. Failed
+generation can leave a numbers-only edition; a later service recovery does not
+silently rewrite it. Two minutes is a check delay, not a delivery guarantee.
+
+Acceptance checks matching scheduled start/finish records, identities, inputs,
+preparation completed before 09:00, an edition generated between 09:00 and 09:02,
+and publication completed before 09:05 with a matching push receipt. Five consecutive
+weekdays are required. Manual recovery,
+idle checks and late editions are excluded. Public Pages deployment is verified
+separately. September 8 remained 0/5; the late numbers-only edition stays separate.
+
+## Offline research and input archives
+
+```powershell
+$env:PYTHONPATH = 'src'
+python -m fxdash.research --help
+python -m fxdash.research.lasso_cv --help
+python -m fxdash.data.vintages --verify outputs/input_archive/captures/<capture>.json
+python ops/replay_engine_capture.py --help
+```
+
+Normal live acquisition records `engine_inputs` before fitting, using immutable
+content-addressed Parquet objects and timestamped manifests. They preserve parsed
+input tables, not every raw HTTP response. `cache_baseline` captures only the cache
+observed now; it is not proof of earlier acquisition times. `fxdash.operations`
+checks a bounded set of saved manifests and compares like-kind captures when available.
+
+Research requires saved inputs or existing local cache and local input files. It
+does not fetch data or write production contracts. Always choose a new output
+directory. Historical experiments need their original snapshots for replay;
+the public repository intentionally excludes those inputs. Protocols are stored in
+`docs/RESEARCH_EVALUATION.md` and `docs/RESEARCH_LASSO_CV_PLAN_20260907.md`.
+Read [the findings](../docs/RESEARCH_FINDINGS_20260908.md) before proposing a new
+configuration: no candidate from these experiments was promoted into production.

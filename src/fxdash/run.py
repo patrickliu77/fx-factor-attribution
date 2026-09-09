@@ -40,7 +40,8 @@ from .config import (
 from .coverage import enforce as enforce_coverage
 from .data import diagnose, panel as panel_mod
 from .data.alignment import read_profile
-from .data.base import dump_records, record, records
+from .data.base import dump_records, record, records, reset_records
+from .data.vintages import capture_raw, now_utc
 from .factors.build import build_pair_panel
 from .health import run_health_checks
 from . import heartbeat
@@ -192,7 +193,14 @@ def main(argv=None) -> int:
         print(f"  [{_time.perf_counter() - _t0:6.0f}s] {label}")
 
     print("Loading raw series ...")
+    reset_records()
+    capture_started = now_utc()
     raw = panel_mod.load_raw()
+    # Persist exact parsed inputs before any modelling or contract mutation.
+    # Archive failures follow main_guarded's red-status path; never silently skip.
+    input_capture = capture_raw(raw, OUTPUT_DIR, started_at=capture_started,
+                                source_records=records(), mode=mode.value)
+    record("input_archive_saved", **input_capture)
     _stage("load complete")
 
     print("Checking frozen offsets ...")
@@ -298,6 +306,7 @@ def main(argv=None) -> int:
 
     manifest = {
         "mode": mode.value,
+        "input_archive": input_capture,
         "model_revision": MODEL_REVISION,
         "start": str(start.date()),
         "end": str(contract["date"].max().date()),

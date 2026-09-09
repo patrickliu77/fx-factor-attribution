@@ -15,6 +15,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import random
+import time
+from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 
@@ -36,23 +40,71 @@ FREE_TIER_MODELS = (
 
 
 class GenerationError(RuntimeError):
-    """Generation failed. The caller records it and moves on; no retry."""
+    """Safe diagnostic fields only. Provider text and chained exceptions stay out."""
+
+    def __init__(self, category, *, stage='request', http_status=None, retryable=False):
+        self.diagnostic = {'category': category, 'stage': stage, 'retryable': retryable}
+        if http_status is not None:
+            self.diagnostic['http_status'] = http_status
+        super().__init__(category)
+
+
+def failure_details(exc):
+    return dict(exc.diagnostic) if isinstance(exc, GenerationError) else {
+        'category': 'unexpected_error', 'stage': 'generation', 'retryable': False}
+
+
+def http_failure(code, body):
+    """Read error details in memory; persist classification, never their contents."""
+    try:
+        error = json.loads(body).get('error', {})
+        message = str(error.get('message', '')).lower()
+        details = error.get('details', [])
+        quota_ids = ' '.join(str(v.get('quotaId', '')) for d in details for v in d.get('violations', [])).lower()
+        zero = bool(re.search(r'limit:\s*0\b', message))
+        daily = 'perday' in quota_ids or 'per day' in message
+        per_minute = 'perminute' in quota_ids
+    except (ValueError, TypeError, AttributeError):
+        zero = daily = per_minute = False
+    category = {400: 'invalid_request', 401: 'authentication_failed', 403: 'permission_denied',
+                404: 'model_unavailable', 408: 'request_timeout'}.get(code, 'http_error')
+    retryable = code in {408, 500, 502, 503, 504}
+    if code in {500, 502, 503, 504}:
+        category = 'service_unavailable'
+    if code == 429:
+        category = 'quota_exhausted' if zero or daily else 'rate_limited' if per_minute else 'quota_or_rate_limit'
+        retryable = per_minute and not (zero or daily)
+    result = GenerationError(category, http_status=code, retryable=retryable)
+    # Respect a provider's stated retry delay. Long waits are deferred to a
+    # future run rather than consuming the current briefing's time budget.
+    try:
+        waits = [float(d['retryDelay'][:-1]) for d in details
+                 if re.fullmatch(r'[0-9]+(?:\.[0-9]+)?s', str(d.get('retryDelay', '')))]
+        if waits:
+            result.diagnostic['retry_after_seconds'] = min(max(waits), 86400)
+    except (UnboundLocalError, TypeError, ValueError, AttributeError):
+        pass
+    return result
 
 
 class GeminiClient:
     """Implements compose's LLMClient protocol."""
 
     def __init__(self, model: str = LLM_MODEL, api_key: str | None = None,
-                 timeout: int = TIMEOUT_S):
+                 timeout: int = TIMEOUT_S, max_requests: int = 6, max_attempts: int = 2,
+                 sleeper=time.sleep):
         key = api_key or os.environ.get(API_KEY_ENV)
         if not key:
-            raise GenerationError(
-                f"{API_KEY_ENV} is not set. The key is read from the environment "
-                f"only and is never written to any file.")
+            raise GenerationError('missing_api_key', stage='configuration')
+        if not 1 <= max_requests <= 6 or not 1 <= max_attempts <= 2:
+            raise ValueError('invalid_request_budget')
         self._key = key
         self.model = model
         self.timeout = timeout
         self.calls: list[dict] = []
+        self.attempts: list[dict] = []
+        self.max_requests, self.max_attempts = max_requests, max_attempts
+        self.sleeper = sleeper
 
     # --------------------------------------------------------------- accounting
     @property
@@ -70,6 +122,8 @@ class GeminiClient:
             "token_cost_usd": 0.0,
             "searches": 0,
             "detail": self.calls,
+            "request_attempts": len(self.attempts),
+            "attempts": self.attempts,
         }
 
     # --------------------------------------------------------------- generation
@@ -82,39 +136,89 @@ class GeminiClient:
                 "responseSchema": to_gemini_schema(schema),
             },
         }
-        url = f"{API_BASE}/{self.model}:generateContent?key={self._key}"
+        url = f"{API_BASE}/{self.model}:generateContent"
         request = urllib.request.Request(
             url, data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}, method="POST")
+            headers={"Content-Type": "application/json", "x-goog-api-key": self._key}, method="POST")
 
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = json.loads(response.read())
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:400]
-            raise GenerationError(f"HTTP {exc.code}: {detail}") from exc
-        except Exception as exc:
-            raise GenerationError(f"{type(exc).__name__}: {exc}") from exc
+        body = None
+        for attempt in range(self.max_attempts):
+            if len(self.attempts) >= self.max_requests:
+                raise GenerationError('request_budget_exhausted', stage='budget')
+            record = {'started_at': datetime.now(timezone.utc).isoformat(), 'state': 'started',
+                      'request_number': len(self.attempts)+1}
+            self.attempts.append(record)
+            started = time.monotonic()
+            error = None
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    record['http_status'] = response.status
+                    body = json.loads(response.read())
+                if not isinstance(body, dict):
+                    raise ValueError('invalid_response_shape')
+                record['state'] = 'response_received'
+            except urllib.error.HTTPError as exc:
+                try:
+                    body_error = exc.read()
+                except Exception:
+                    body_error = b'{}'
+                error = http_failure(exc.code, body_error)
+                retry_after = (exc.headers or {}).get('Retry-After', '')
+                if re.fullmatch(r'[0-9]{1,5}', str(retry_after)):
+                    error.diagnostic['retry_after_seconds'] = min(int(retry_after), 86400)
+            except (TimeoutError, urllib.error.URLError):
+                # Delivery may have occurred. Do not resend an ambiguous request.
+                error = GenerationError('transport_failure', stage='transport')
+            except Exception:
+                error = GenerationError('invalid_response', stage='response')
+            finally:
+                record['elapsed_seconds'] = round(time.monotonic()-started, 3)
+                record['finished_at'] = datetime.now(timezone.utc).isoformat()
+            if error is None:
+                break
+            record.update(state='failed', **error.diagnostic)
+            if not error.diagnostic['retryable'] or attempt+1 >= self.max_attempts or len(self.attempts) >= self.max_requests:
+                raise error from None
+            delay = max(2 ** attempt, error.diagnostic.get('retry_after_seconds', 0))
+            if delay > 10:
+                record['retry_deferred'] = True
+                raise error from None
+            delay += random.uniform(0, .25)
+            record['retry_delay_seconds'] = delay
+            self.sleeper(delay)
 
-        self.calls.append(body.get("usageMetadata") or {})
+        usage = body.get('usageMetadata') or {}
+        self.calls.append({k: usage[k] for k in ('promptTokenCount','candidatesTokenCount','thoughtsTokenCount','totalTokenCount')
+                           if isinstance(usage, dict) and type(usage.get(k)) is int and usage[k] >= 0})
 
         candidates = body.get("candidates") or []
         if not candidates:
-            raise GenerationError(f"no candidate: {json.dumps(body)[:300]}")
+            self.attempts[-1].update(state='failed', category='no_candidate', stage='output')
+            raise GenerationError('no_candidate', stage='output')
+        if not isinstance(candidates, list) or not isinstance(candidates[0], dict):
+            self.attempts[-1].update(state='failed', category='invalid_response', stage='output')
+            raise GenerationError('invalid_response', stage='output')
         candidate = candidates[0]
         reason = candidate.get("finishReason")
         if reason not in (None, "STOP"):
             # Safety blocks, length overruns and the like surface here; they must not
             # be parsed on as if they were normal output
-            raise GenerationError(f"finishReason={reason}")
+            category = 'output_limit' if reason == 'MAX_TOKENS' else 'output_blocked'
+            self.attempts[-1].update(state='failed', category=category, stage='output')
+            raise GenerationError(category, stage='output')
 
-        text = "".join(
-            part.get("text", "")
-            for part in (candidate.get("content") or {}).get("parts", [])
-        )
-        if not text.strip():
-            raise GenerationError("structured output is empty")
         try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise GenerationError(f"output is not valid JSON: {exc}; first 200 chars: {text[:200]}")
+            text = "".join(part.get("text", "") for part in (candidate.get("content") or {}).get("parts", []))
+        except (TypeError, AttributeError):
+            self.attempts[-1].update(state='failed', category='invalid_response', stage='output')
+            raise GenerationError('invalid_response', stage='output') from None
+        if not text.strip():
+            self.attempts[-1].update(state='failed', category='empty_output', stage='output')
+            raise GenerationError('empty_output', stage='output')
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            self.attempts[-1].update(state='failed', category='invalid_json', stage='output')
+            raise GenerationError('invalid_json', stage='output') from None
+        self.attempts[-1]['state'] = 'completed'
+        return parsed

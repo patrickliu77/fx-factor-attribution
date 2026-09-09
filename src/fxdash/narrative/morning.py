@@ -117,7 +117,7 @@ class DayLock:
 def make_client():
     from .client import GeminiClient
     try:
-        return GeminiClient(timeout=45)
+        return GeminiClient(timeout=45, max_requests=3)
     except Exception:
         return None
 
@@ -143,6 +143,8 @@ def prepare(output_dir: Path, *, clock=now_utc, collector=None, client_factory=m
             observed = clock()
             packet = (collector or collect)(snapshot, clock=clock)
             packet["attribution_observed_at"] = observed.isoformat(timespec="seconds")
+            # Link this edition to the exact parsed inputs archived by its quant run.
+            packet["input_archive"] = snapshot.manifest.get("input_archive")
             packet["edition_date"] = day
             packet["target_cutoff"] = cutoff(started).isoformat(timespec="seconds")
             # Save evidence even when collection finishes after the cutoff.
@@ -253,6 +255,8 @@ def compose_edition(packet, notes, *, moment, mode="edition", warnings=()):
                 packet_hash=digest(packet))
     if not linked:
         base["warnings"].append("No driver commentary passed verification; saved figures remain available.")
+    if any(isinstance(r, dict) and r.get('generation_failure') for r in (notes if isinstance(notes, list) else [])):
+        base['warnings'].append('generation_requests_failed')
     return base
 
 

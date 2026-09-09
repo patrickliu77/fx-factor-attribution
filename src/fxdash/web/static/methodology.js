@@ -85,9 +85,12 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <p>Agreement describes sensitivity to the estimator. A stable allocation can still omit relevant variables. The badge leaves the system health colour unchanged.</p>
 <p>The research page compares saved OLS, Ridge and post-Lasso results on dates that are final and available for all three. It shows residual MAE and RMSE, absolute factor-allocation differences from OLS, and Lasso selection changes for the latest 252 shared observations and full shared history. Smaller residuals indicate closer reconstruction on those dates. Realised factors and revised historical data enter this comparison, so it does not establish forecast performance. Lasso also uses a wider factor menu.</p>
 <details class="method__detail"><summary>PCA and model health</summary>
+<p>PCA is retained as a check on market structure. Open the folded PCA view on the Attribution page to see how concentrated the six currencies' common variation is, and how closely dollar and carry follow it. This view uses the selected training window, independently of the regression model and return period.</p>
+<p>For the largest eigenvalue of the standardised return correlation matrix, the PC1 variance share is \(\lambda_1/\sum_j\lambda_j\). It measures concentration inside the historical window. It does not measure the fraction of today's return explained.</p>
 <p>Rolling PCA tracks the common structure of the six currency returns. The monitor records the absolute correlation between PC1 and dollar, the absolute correlation between PC2 and carry, and the projection \(R^2\) of carry onto the span of PC2 and PC3. Their reference thresholds in the current implementation are 0.9, 0.6 and 0.5 respectively. The older PC2 correlation flag is still recorded.</p>
 <p>The projection measures how closely carry lies within that two dimensional space as the individual components rotate. PCA supplies monitoring statistics. The named dollar, carry and market factors supply the attribution.</p>
 <p>The PCA eigensystem comes from the return correlation matrix. Component scores and projections use centred, standardised returns so that they share the eigensystem's units.</p>
+<p>These monitoring baskets use the full panel. Single-pair attribution uses target-excluded baskets. All three diagnostics come from the currency returns themselves, so independent evidence is still needed for economic interpretations. The monitor does not perform PCA regression on external factors or change their daily contributions. Ridge and post-Lasso retain their respective shrinkage and selection roles.</p>
 <p>Model health checks compare rolling fit with the pair's own history and the other pairs. A separate heartbeat records when the pipeline last completed successfully. These checks help distinguish a change in fit from a missed run.</p>
 </details>
 </section>
@@ -104,6 +107,7 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <p>A separate panel starts from the two largest factor contributions and retrieves factor-related reporting alongside a currency-context search. It retains exclusion reasons for explicit quote pages and unrelated institutional-name matches. These links are reading leads, with no new causal judgment. News publication dates have day precision; observation timestamps record the actual retrieval time.</p>
 <p>The weekday text edition starts collecting at 08:50 America/New_York and freezes its input packet before 09:00. A separate model call can add source-linked event context for up to three large currency moves. Numbers, leave-one-out definitions and an evidence-checking plan are printed by code. The model reads RSS titles and snippets; its interpretation still needs scrutiny. Free-form AI outlooks remain withheld after validation exposed unsupported policy inferences.</p>
 <p>At 09:00 the job publishes from the saved packet. Missing or late inputs receive a dated notice; rejected commentary leaves a numeric summary. Publication retries reuse the frozen edition. Source ids, exact excerpts, dates, bilingual citations and wording are checked, with failed drafts retained. These checks do not prove causality or verify every paraphrase. Validation previews are labelled separately. The host must be running, and the first natural morning execution remains to be observed.</p>
+<p>A separate catch-up task covers late logins. After 09:05 New York time on weekdays, it waits for current saved attribution and usable news access, then can generate one dated catch-up briefing. It records actual collection and generation times. The original morning archive stays unchanged, and catch-up text cannot pass the on-time morning test. A persistent generation claim prevents repeated model calls after interruption; publication retries use the saved text. The task checks two minutes after login and every fifteen minutes while the computer is available, without waking it.</p>
 <p>The News archive retains the latest twenty editions for reading. Preparation, saved text and delivery are shown separately. The browser checks dates against its current New York clock, and a static build identifies the edition it contains. An unreadable archive remains labelled; earlier text is available by date. These observations cannot confirm that the host is still running or reveal a failed push after the last build.</p>
 </section>
 
@@ -203,9 +207,12 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <p>一致性反映归因对估计方法的敏感程度。三路接近时，共同遗漏的变量仍可能影响结果。徽标独立展示，不改变系统健康状态的颜色。</p>
 <p>研究页在三种模型共同拥有的已确认日期上比较 OLS、Ridge 与 post-Lasso。最近 252 个共有观测和完整共有历史分别列出残差 MAE、RMSE、相对 OLS 的因子分配差异，以及 Lasso 选集变动率。残差较小表示在这些日期还原波动更接近。比较使用当日实际因子和经过修订的历史数据，预测能力仍需独立检验。Lasso 还使用了更宽的候选因子菜单。</p>
 <details class="method__detail"><summary>PCA 与模型健康检查</summary>
+<p>保留 PCA 的目的是检查市场共同结构。归因页的折叠区域展示六个货币的变化有多集中，以及美元、套息篮子与这种结构是否贴合。这里沿用所选训练窗口，回归模型与收益区间不会改变 PCA。</p>
+<p>标准化收益相关矩阵的最大特征值为 \(\lambda_1\)，PC1 的方差占比为 \(\lambda_1/\sum_j\lambda_j\)。它描述历史窗口内面板变化的集中程度，不能当作当天收益的解释份额。</p>
 <p>滚动 PCA 用于观察六组货币收益的共同结构。当前监控记录 PC1 与美元因子的绝对相关、PC2 与套息因子的绝对相关，以及套息因子在 PC2、PC3 张成空间上的投影 \(R^2\)。代码中的参考阈值依次为 0.9、0.6 和 0.5。旧的 PC2 相关告警仍保留在记录中。</p>
 <p>投影指标观察套息因子与整个二维空间的接近程度，可减少单个主成分旋转带来的干扰。PCA 输出监控统计量；归因使用显式构造的美元、套息和市场因子。</p>
 <p>PCA 的特征向量来自收益相关矩阵，主成分得分与投影均使用去均值、标准化后的收益，保持计算量纲一致。</p>
+<p>监测使用全篮子美元与套息序列，单币归因使用排除目标货币的篮子。三项诊断都从货币收益自身提取，经济解读仍需独立证据。本项目不把外部因子先做 PCA 再回归，也不让 PCA 改动日度贡献。Ridge 负责系数收缩，post-Lasso 负责变量筛选。</p>
 <p>模型健康检查将滚动拟合程度与自身历史及其他货币对比较。运行心跳则记录管线最近一次成功完成的时间。结合两者，可以分辨拟合关系变化与任务漏跑。</p>
 </details>
 </section>
@@ -222,6 +229,7 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <p>另一个面板从贡献绝对值最大的两个因子出发，分别检索因子报道与货币背景。报价页面、机构同名造成的无关投资报道会留下排除原因。链接提供阅读线索，尚未加入新的因果判断。新闻发布日期仅精确到日，抓取时间记录程序实际看到报道的时刻。</p>
 <p>工作日文字晨报按 America/New_York 时区运行，08:50 开始采集，在 09:00 前保存输入。独立的模型调用为最多三个大幅波动货币对补充有来源的事件背景。数字、留一法因子定义与核验路径由代码展示。模型阅读 RSS 标题和摘要，解释内容仍需审慎核对。样本验收发现模型会推演缺乏证据的政策影响，自由生成的前瞻段落暂不发布。</p>
 <p>09:00 使用已保存输入发布。缺少输入或输入迟到时展示带日期的说明；解读未通过检查时保留数字摘要。重试发布沿用冻结稿件。来源编号、原文短摘录、时间、双语引用及措辞均有检查，失败稿件保留归档。这些检查无法证明因果关系，也无法核实每一句转述。验收预览单独标注。运行依赖主机在线，首次自然触发仍待观察。</p>
+<p>晚登录由独立补发任务处理。美东工作日 09:05 后，等到最新已保存归因与新闻源可用，再生成当天的一份补发简报，记录实际采集和生成时间。原晨报档案保持不变，补发不计作晨间按时验收通过。生成前持久保存调用声明，中断后不会重复调用模型，发布失败则沿用已保存正文重试。任务在登录两分钟后检查，机器可用时每十五分钟复查，不主动唤醒电脑。</p>
 <p>News 页可查阅最近二十期晨报。准备、稿件与交付记录分开展示，浏览器按当前美东时间检查日期，静态构建标识其中包含的稿件版本。档案不可读时保留提示，较早稿件可按日期选择。这些记录无法确认主机仍在运行，也看不到最后一次构建之后发生的推送失败。</p>
 </section>
 

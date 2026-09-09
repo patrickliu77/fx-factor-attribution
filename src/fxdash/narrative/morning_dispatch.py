@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
+import uuid
 from pathlib import Path
 
 from . import morning as M
@@ -18,12 +20,13 @@ def publish_site(repo: Path):
     result = subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(repo / "ops" / "publish.ps1")], cwd=repo, timeout=600, check=False,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     if result.returncode:
         raise RuntimeError("site_publish_failed")
 
 
-def dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
+def _dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
              prepare_fn=M.prepare, finalize_fn=M.finalize, publisher=publish_site):
     moment = clock()
     action = M.slot(moment)
@@ -69,20 +72,57 @@ def dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
         return {"state": "busy", "date": day}
 
 
+def dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
+             prepare_fn=M.prepare, finalize_fn=M.finalize, publisher=publish_site,
+             invocation_source="manual"):
+    """Durable start and completion observations, separate from frozen editions."""
+    if invocation_source not in {"manual", "scheduled_task"}:
+        raise ValueError("invalid_invocation_source")
+    started = clock()
+    action = M.slot(started)
+    if action == "idle":
+        if invocation_source == "scheduled_task":
+            from .morning_health import observe_idle, save_observation
+            result = observe_idle(output_dir, started)
+            save_observation(output_dir, result)
+            return result
+        return {"state": "idle"}
+    day = M.local_time(started).date().isoformat()
+    root = Path(output_dir) / "briefing" / "days" / day / "dispatch"
+    run_id = started.strftime("%Y%m%dT%H%M%S%f") + "-" + uuid.uuid4().hex
+    observation = {"run_id": run_id, "date": day, "action": action,
+                   "source": invocation_source, "started_at": started.isoformat(), "state": "started"}
+    M.atomic_json(root / (run_id + ".start.json"), observation)
+    try:
+        result = _dispatch(output_dir, repo, clock=clock, prepare_fn=prepare_fn,
+                           finalize_fn=finalize_fn, publisher=publisher)
+    except BaseException as exc:
+        M.atomic_json(root / (run_id + ".finish.json"), dict(observation, state="exception",
+                      error=type(exc).__name__, finished_at=clock().isoformat()))
+        raise
+    M.atomic_json(root / (run_id + ".finish.json"), dict(observation,
+                  state=result["state"], finished_at=clock().isoformat()))
+    return result
+
+
 def main(argv=None):
     from ..config import OUTPUT_DIR, REPO_ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--check", action="store_true", help="show the clock gate without writes/network")
+    parser.add_argument("--scheduled-task", action="store_true", help="invoked by the registered task wrapper")
     args = parser.parse_args(argv)
     if args.check:
         print(json.dumps({"timezone": M.ZONE, "action": M.slot(M.now_utc()),
                           "new_york_time": M.local_time(M.now_utc()).isoformat()}))
         return 0
-    result = dispatch(args.output_dir, REPO_ROOT)
-    if result["state"] != "idle":
+    result = dispatch(args.output_dir, REPO_ROOT,
+                      invocation_source="scheduled_task" if args.scheduled_task else "manual")
+    if result["state"] != "idle" or args.scheduled_task:
         print(json.dumps(result, ensure_ascii=True))
-    return 1 if result["state"] in ("prepare_failed", "publish_failed", "finalize_failed") else 0
+    if result["state"] == "missed_window":
+        return 2
+    return 1 if result["state"] in ("prepare_failed", "publish_failed", "finalize_failed", "ineligible_packet") else 0
 
 
 if __name__ == "__main__":

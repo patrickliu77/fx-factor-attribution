@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -26,7 +27,7 @@ _RECORDS: list[dict] = []
 
 def record(event: str, **fields) -> None:
     """Append one validation-log entry."""
-    entry = {"event": event, **fields}
+    entry = {"event": event, "observed_at": datetime.now(timezone.utc).isoformat(timespec="microseconds"), **fields}
     _RECORDS.append(entry)
     log.info("%s %s", event, json.dumps(fields, ensure_ascii=False, default=str))
 

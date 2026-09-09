@@ -15,11 +15,14 @@ EDITION_STATES = {"ready", "numbers_only", "inputs_unavailable"}
 PUBLIC_FIELDS = ("available", "mode", "date", "state", "text", "attribution_as_of",
                  "news_observed_by", "generated_at", "target_cutoff", "scheduled",
                  "late_publication", "warnings", "packet_hash", "data_version",
-                 "prompt_version", "validator_version", "generator", "schema_version")
+                 "prompt_version", "validator_version", "generator", "schema_version",
+                 "morning_target", "catchup_reason")
 
 
-def day_folders(output_dir):
-    root = Path(output_dir) / "briefing" / "days"
+def day_folders(output_dir, kind="days"):
+    if kind not in {"days", "catchup"}:
+        raise ValueError("invalid_archive_kind")
+    root = Path(output_dir) / "briefing" / kind
     if not root.exists():
         return []
     folders = []
@@ -33,9 +36,11 @@ def day_folders(output_dir):
     return sorted(folders, reverse=True)
 
 
-def valid_edition(value, day):
+def valid_edition(value, day, *, mode="edition"):
     try:
-        return (value.get("mode") == "edition" and value.get("date") == day
+        return (mode in {"edition", "catchup"} and value.get("mode") == mode and value.get("date") == day
+                and (mode != "catchup" or (value.get("scheduled") is False
+                     and isinstance(value.get("morning_target"), str)))
                 and value.get("state") in EDITION_STATES and value.get("available") is True
                 and isinstance(value["text"], dict) and isinstance(value["notes"], list)
                 and all(isinstance(v, str) for v in value["text"].values())
@@ -72,22 +77,22 @@ def public_copy(value):
     return result
 
 
-def unreadable(day):
-    return {"available": True, "mode": "edition", "date": day, "state": "archive_unreadable",
+def unreadable(day, mode="edition"):
+    return {"available": True, "mode": mode, "date": day, "state": "archive_unreadable",
             "text": {}, "notes": [], "warnings": ["archive_unreadable"]}
 
 
-def read_edition(path):
+def read_edition(path, *, mode="edition"):
     value = M.read_json(path)
     day = path.parent.name
-    if not valid_edition(value, day):
-        return unreadable(day)
+    if not valid_edition(value, day, mode=mode):
+        return unreadable(day, mode)
     try:
         result = public_copy(value)
         result["edition_hash"] = M.digest(value)
         return result
     except (KeyError, TypeError, ValueError, AttributeError):
-        return unreadable(day)
+        return unreadable(day, mode)
 
 
 def receipt(root, edition):
@@ -120,8 +125,14 @@ def dashboard(output_dir, data_version=None, *, clock=None):
     folders = day_folders(output_dir)
     paths = [p / "edition.json" for p in folders if (p / "edition.json").exists()]
     history = [read_edition(p) for p in paths[:HISTORY_LIMIT]]
+    late_folders = day_folders(output_dir, "catchup")
+    late_paths = [p / "edition.json" for p in late_folders if (p / "edition.json").exists()]
+    catchups = [read_edition(p, mode="catchup") for p in late_paths[:HISTORY_LIMIT]]
     current = history[0] if history else {}
-    if not history:
+    if catchups and (not current or catchups[0]["date"] > current["date"]
+                    or (catchups[0]["date"] == current["date"] and current["state"] not in {"ready", "numbers_only"})):
+        current = catchups[0]
+    if not history and not catchups:
         preview = M.read_json(Path(output_dir) / "briefing" / "driver-preview.json")
         if (preview.get("data_version") == data_version and preview.get("prompt_version") == PROMPT_VERSION
                 and preview.get("validator_version") == VALIDATOR_VERSION):
@@ -129,7 +140,17 @@ def dashboard(output_dir, data_version=None, *, clock=None):
                 current = public_copy(preview)
             except (KeyError, TypeError, ValueError, AttributeError):
                 current = {}
+    current_path = late_paths[0] if current.get("mode") == "catchup" else paths[0] if paths else None
+    late_run = M.read_json(late_folders[0] / "status.json") if late_folders else {}
+    # Export only a small status vocabulary, never error strings or model replies.
+    late_state = late_run.get("state")
+    if not isinstance(late_state, str) or late_state not in {"published", "already_available", "publish_failed", "preparing", "publishing",
+            "waiting_for_attribution", "waiting_for_news", "waiting_for_morning", "catchup_failed", "archive_unreadable"}:
+        late_state = "not_recorded"
     return {"current": current, "history": history, "history_limit": HISTORY_LIMIT,
-            "current_push": receipt(paths[0].parent, current) if paths else None,
+            "current_push": receipt(current_path.parent, current) if current_path else None,
+            "catchup_history": catchups, "total_catchups": len(late_paths),
+            "latest_catchup_run": {"state": late_state, "date": late_folders[0].name,
+                                   "observed_at": late_run.get("observed_at")} if late_folders else None,
             "total_editions": len(paths), "observed_at": (clock or M.now_utc)().isoformat(timespec="seconds"),
             "latest_run": run_record(folders[0]) if folders else None, "timezone": M.ZONE}

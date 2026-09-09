@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import {staticFixture} from './browser_static.mjs';
 const { chromium } = await import(process.env.FXDASH_PLAYWRIGHT || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8784').replace(/\/$/, '');
 const out = process.argv[3];
@@ -14,6 +15,7 @@ const results = [], errors = [];
 try {
   for (const lang of ['en','zh']) for (const width of [390,1440]) {
     const context = await browser.newContext({viewport:{width,height:950}});
+    await staticFixture(context,base);
     await context.addInitScript(({lang})=>{
       localStorage.setItem('fxdash.lang',lang);
       localStorage.setItem('fxdash.window','126');
@@ -66,12 +68,22 @@ try {
     await page.locator('.comparison-row').first().waitFor({timeout:60000});
     assert.equal(await page.locator('.comparison-row').count(),8);
     await page.screenshot({path:path.join(out,`research-${lang}-${width}.png`),fullPage:true});
+    const newsResponse = page.waitForResponse(response => {
+      const pathname = new URL(response.url()).pathname;
+      return pathname.endsWith('/api/news') || pathname.endsWith('/api/news.json');
+    });
     await page.goto(base+'/#/news');
+    const feed = await (await newsResponse).json();
     await page.locator('.driver-pair').first().waitFor({timeout:60000});
     assert.equal(await page.locator('.driver-pair').count(),6);
     assert.equal(await page.locator('.brief-board').count(),1);
     assert.equal(await page.locator('.brief-status-grid > div').count(),3);
-    assert.equal(await page.locator('[data-brief-history]').count(),1);
+    // A history selector needs at least one readable preview or saved edition.
+    // An expired preview with no editions must retain the status desk without
+    // inventing a selectable morning report.
+    const hasEdition = Boolean(feed.briefing?.available || feed.briefing_archive?.history?.length);
+    assert.equal(await page.locator('[data-brief-history]').count(), Number(hasEdition));
+    if (!hasEdition) assert.equal(await page.locator('.brief-preview').count(),0);
     if (await page.locator('.brief-preview').count()) {
       const brief = page.locator('.brief-preview');
       assert.ok((await brief.innerText()).includes(lang==='en' ? 'Attribution through' : '归因截至'));

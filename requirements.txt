@@ -1,4 +1,4 @@
-# Pinned to the versions this project is developed and tested against.
+# Pinned to the versions used for this release's offline verification.
 pandas==3.0.5
 numpy==2.4.6
 pyarrow==21.0.0

@@ -59,8 +59,11 @@ def process_pair(fact, client, calendar, fetcher=None) -> dict:
     try:
         raw, narrative = C.compose(fact, sources, client)
     except Exception as exc:
-        log.warning("%s generation failed: %s", fact.pair, exc)
-        record = _failed_record(fact, sources, f"generation failed: {exc}")
+        from .client import failure_details
+        failure = failure_details(exc)
+        log.warning("%s generation failed: %s", fact.pair, failure['category'])
+        record = _failed_record(fact, sources, f"generation failed: {failure['category']}")
+        record['generation_failure'] = failure
         record["retrieval"] = retrieval
         return record
 

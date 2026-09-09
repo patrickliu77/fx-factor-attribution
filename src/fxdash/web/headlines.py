@@ -38,7 +38,8 @@ from datetime import datetime, timezone
 
 from ..narrative import retrieve as R
 from ..narrative.relevance import exclusion_reason
-from .newsfeed import similar_titles, story_kind, title_tokens
+from .newsfeed import story_kind
+from .events import group_events
 
 log = logging.getLogger(__name__)
 
@@ -69,8 +70,8 @@ DISPLAY_PAIR_TERMS = {
 }
 
 # quote pages are not news: "USD/JPY Streaming Chart" and "XAUAUD Quote" really
-# did slip in. Block only these two explicit page types, no content judgement
-JUNK_TITLE_RE = re.compile(r"(streaming chart|live chart|\bquote\b\s*$)", re.I)
+# did slip in. Reference/fund-detail pages are another explicit non-news type.
+JUNK_TITLE_RE = re.compile(r"(streaming chart|live chart|\bquote\b\s*$|^fundamental fund details\b)", re.I)
 
 
 def _now_iso() -> str:
@@ -114,9 +115,11 @@ class HeadlineBoard:
         fetch_fn = self._fetcher or _fetch
         try:
             items = R.parse_feed(fetch_fn(query), max_items=PER_PAIR + 2, phase="live")
-            excluded = [dict(i, pair=pair, reason=exclusion_reason(i["title"], pair))
-                        for i in items if exclusion_reason(i["title"], pair)]
-            items = [i for i in items if not exclusion_reason(i["title"], pair)]
+            def reason(item):
+                return (exclusion_reason(item["title"], pair) or
+                        ("profile_or_reference_page" if JUNK_TITLE_RE.search(item["title"]) else None))
+            excluded = [dict(i, pair=pair, reason=reason(i)) for i in items if reason(i)]
+            items = [i for i in items if not reason(i)]
             for item in items:
                 # display-layer content classification (newsfeed.story_kind):
                 # events go to the main list, opinion pieces to the collapsed
@@ -144,25 +147,13 @@ class HeadlineBoard:
                             # do not show it twice
                             merged[url]["pairs"].append(pair)
                         continue
-                    # near-duplicate titles (two outlets running the same event)
-                    # also keep only one, per user ruling
-                    tokens = title_tokens(item["title"])
-                    twin = next((merged[u] for u in order
-                                 if similar_titles(tokens, merged[u]["_tokens"])), None)
-                    if twin is not None:
-                        if pair not in twin["pairs"]:
-                            twin["pairs"].append(pair)
-                        continue
                     entry = dict(item)
                     entry["pairs"] = [pair]
-                    entry["_tokens"] = tokens
                     entry.pop("phase", None)
                     merged[url] = entry
                     order.append(url)
 
-        items = [merged[u] for u in order]
-        for item in items:
-            item.pop("_tokens", None)
+        items = group_events([merged[u] for u in order])
         # newest first; published has only day precision (a known RSS defect), so
         # same-day items keep feed order
         items.sort(key=lambda i: i.get("published") or "", reverse=True)

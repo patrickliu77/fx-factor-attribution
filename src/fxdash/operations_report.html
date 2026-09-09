@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>FX 运行验收 · 本地观察报告</title>
+<style>
+{{FONTS}}
+:root{color-scheme:light;--ink:#213732;--muted:#657570;--line:#dbe3dd;--green:#176951;--paper:#f5f5f0;--amber:#906418}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 'Outfit','Microsoft YaHei',sans-serif}
+main{max-width:1100px;margin:auto;padding:48px 32px 28px}header{border-top:4px solid var(--green);padding-top:22px;margin-bottom:28px}
+.eyebrow,.mono,.metric strong,th{font-family:'IBM Plex Mono','Microsoft YaHei',monospace}.eyebrow{font-size:12px;letter-spacing:.15em;color:var(--green)}
+.heading{display:flex;align-items:center;justify-content:space-between;gap:16px}h1{font-size:36px;letter-spacing:-.03em;margin:7px 0}h2{font-size:21px;margin:0 0 12px}h3{font-size:16px;margin:24px 0 10px}
+p{margin:8px 0 16px}.muted,.small{color:var(--muted)}.small{font-size:12px}.badge{font-size:13px;padding:5px 12px;border-radius:40px;white-space:nowrap}.pending{background:#f4eacb;color:var(--amber)}.good{background:#dcefe6;color:var(--green)}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:24px 0}.metric{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 22px}.metric strong{font-size:35px;line-height:1.4;font-weight:400}.metric strong small{font-size:15px;color:var(--muted)}.metric p{font-size:14px;margin:0}.metric .small{font-size:12px}
+section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:26px;margin-bottom:20px}.section-top{display:flex;align-items:center;justify-content:space-between;gap:14px}.section-top span{font-size:12px;color:var(--muted)}
+.empty{background:#f4f6f2;border-left:3px solid #b6cbbf;padding:16px 20px;margin:18px 0}.note{color:var(--muted);font-size:13px;margin-bottom:0}
+.table-scroll{max-width:100%;overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:13px;text-align:left}th{font-size:12px;font-weight:400;color:var(--muted);background:#f7f8f5}td,th{padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}td:first-child{font-weight:500;min-width:100px}
+details{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}summary{cursor:pointer;font-size:14px;padding:4px 0;outline-offset:5px}summary:hover{color:var(--green)}.day summary span+span{margin-left:24px;color:var(--muted)}
+.checks{list-style:none;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 20px;font-size:13px}.checks li{padding:7px 10px;background:#f5f7f3;border-radius:4px}.ok{color:var(--green)}.fail{color:#96502d}
+footer{font-size:12px;color:var(--muted)}footer pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}.mono{overflow-wrap:anywhere}#stale{border:1px solid #ddc693;background:#fbf2d9;color:#7f5a1b;padding:12px 16px;border-radius:8px}#stale[hidden]{display:none}
+@media(max-width:620px){main{padding:22px 16px}header{margin-bottom:18px}h1{font-size:28px}.heading{align-items:flex-start;flex-direction:column;gap:2px}.metrics{gap:8px}.metric{padding:13px 10px}.metric strong{font-size:28px}.metric p{font-size:12px}.metric .small{font-size:11px}section{padding:20px 16px}.section-top{align-items:flex-start;flex-direction:column;gap:0}.checks{grid-template-columns:1fr}.day summary span+span{margin-left:10px}.empty{padding:12px 14px}}
+@media print{body{background:white}main{max-width:none;padding:0}section,.metric{break-inside:avoid}details{display:block}#stale{display:none}footer details{display:none}}
+</style>
+</head>
+<body><main>
+<header>
+<div class="eyebrow">FX RESEARCH / OPERATIONS</div>
+<div class="heading"><h1>每天的结果，留下依据。</h1><span class="badge {{TONE}}">{{STATUS}}</span></div>
+<p class="muted">输入留档与晨报运行验收。只检查已经保存的记录，不运行模型。</p>
+<div class="small">报告观察时间：<time id="observed" datetime="{{OBSERVED}}" class="mono">{{LOCAL_TIME}}</time> · 纽约时间</div>
+</header>
+<p id="stale" hidden role="status">这份快照已超过 6 小时。请核对最新报告的观察时间；重新生成报告才会读取新的运行记录。</p>
+<div class="metrics" aria-label="验收概览">
+<div class="metric"><p>完整引擎输入</p><strong>{{ENGINE}}</strong><p class="small">近期已校验的快照</p></div>
+<div class="metric"><p>缓存基线</p><strong>{{BASELINE}}</strong><p class="small">仅代表留档时看到的缓存</p></div>
+<div class="metric"><p>连续通过</p><strong>{{STREAK}}<small> / {{REQUIRED}} 日</small></strong><p class="small">真实工作日运行</p></div>
+</div>
+<section>
+<div class="section-top"><h2>01 · 晨报有没有按时完成</h2><span>验收起点 <span class="mono">{{START}}</span></span></div>
+<p class="note">已到期 {{DUE}} 日，通过 {{PASSED}} 日，含合格事件解读 {{CONTEXT}} 日。每天纽约时间 09:05 后计入验收。</p>
+{{DAYS}}
+<details><summary>最近的窗口外调度观察</summary>{{CLOCK}}</details>
+<details><summary>查看验收口径</summary>
+<p class="note">要求真实定时采集、完整输入与哈希校验、按时冻结稿，以及与该稿匹配的推送回执。纯数字晨报可以通过运行验收，事件解读覆盖另行计数。人工试跑不计入。五个连续工作日全部满足要求，才能通过本轮验收。</p>
+<p class="note">推送回执只证明本地发布流程返回成功。此报告尚未核对 GitHub Pages 的构建状态和公网内容。</p>
+</details>
+</section>
+<section>
+<div class="section-top"><h2>02 · 输入有没有留得住</h2><span>检查最近 {{LIMIT}} 份以内的清单</span></div>
+<p class="note">共发现 {{TOTAL}} 份清单，本次检查 {{CHECKED}} 份。读取并校验清单及其引用的全部表文件。</p>
+{{INVENTORY}}{{ISSUES}}
+<p class="note">系统观察时间是本机保存数据的时间，不能当成供应商首次发布时间。“表内最晚日期”取各表最大值，不能代表每张表都更新到了那一天。</p>
+<h3>相邻快照发生了什么变化</h3>
+{{CHANGES}}
+<details><summary>如何理解这些差异</summary>
+<p class="note">日期新增、日期移除、同一日期的数值修订、缺失值补齐、原值变为缺失分开计数。修订只比较双方都有的日期和字段，按保存值精确比较。列结构变化单独列出。</p>
+<p class="note">完整引擎输入与缓存基线不混合比较。存在完整输入时优先比较最近两份完整输入。只有一份完整输入时，继续等待下一份。差异说明输入版本发生变化，无法据此推断已冻结的归因行被改写。</p>
+</details>
+</section>
+<footer>
+<p>本地静态报告 · 离线可读 · 不包含实时行情、模型评估或公网部署验收。<br>历史快照保留在各自目录；latest.html 在生成新报告时更新。日期与文件名可在同一次快照的 report.json 中核对。</p>
+<details><summary>字体与许可</summary><p>拉丁文字沿用网站的 Outfit 与 IBM Plex Mono，中文使用系统字体。字体已嵌入，打开文件无需访问外网。</p><pre>{{LICENSES}}</pre></details>
+</footer>
+</main>
+<script>
+const observed = Date.parse(document.getElementById('observed').dateTime);
+function showAge(){document.getElementById('stale').hidden = !(Number.isFinite(observed) && Date.now() - observed > 6 * 3600000);}
+showAge();setInterval(showAge,60000);
+</script>
+</body></html>

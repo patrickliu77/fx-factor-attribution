@@ -26,6 +26,7 @@ from .comparison import report as comparison_report
 from .drivers import DriverBoard
 from ..narrative.briefing import load_preview
 from ..narrative.briefing_archive import dashboard as briefing_dashboard
+from ..task_runner import status_view
 from . import newsfeed as NF
 from .market import RANGES as MARKET_RANGES
 from .store import DataStore, clean, clean_list
@@ -121,8 +122,9 @@ def create_app(output_dir: Path | None = None,
     @api.get("/status")
     def status():
         s = snap()
+        from ..narrative import morning
         return {
-            **s.status,
+            **status_view(store.output_dir, s.status, clock=morning.now_utc),
             "server": {
                 "data_version": s.data_version,
                 "loaded_at": s.loaded_at,
@@ -178,9 +180,12 @@ def create_app(output_dir: Path | None = None,
             raise HTTPException(422, detail=f"window must be one of {s.windows}")
         if model not in s.models:
             raise HTTPException(422, detail=f"model must be one of {s.models}")
-        etag_guard(request, response, s, f"overview:{window}:{model}")
+        # Attempt records can change without a new contract/data_version.
+        response.headers['Cache-Control'] = 'no-store'
 
-        heartbeat = (s.status or {}).get("heartbeat", {})
+        from ..narrative import morning
+        observed_status = status_view(store.output_dir, s.status, clock=morning.now_utc)
+        heartbeat = observed_status.get("heartbeat", {})
         pairs = []
         for pair in s.pairs:
             combo = s.combo(pair, window, model)
@@ -191,7 +196,8 @@ def create_app(output_dir: Path | None = None,
             "window": window,
             "model": model,
             "status_digest": {
-                "state": (s.status or {}).get("state"),
+                "state": observed_status.get("state"),
+                "runtime": observed_status.get("runtime"),
                 "provisional_rows": (s.status or {}).get("provisional_rows"),
                 "heartbeat_state": heartbeat.get("state"),
                 "heartbeat_age_hours": heartbeat.get("age_hours"),
@@ -460,6 +466,14 @@ def create_app(output_dir: Path | None = None,
                 "errors": live.get("errors", []),
             }
         earlier = {"start": week_monday, "end": wall_today, "items": earlier_items}
+        from .events import group_sections, REVISION as EVENT_REVISION
+        sections = {"week": week["items"], "fallback": (fallback or {}).get("items", []),
+                    "today": today["items"], "earlier": earlier["items"], "opinions": opinion_items}
+        grouped = group_sections(sections)
+        week["items"], today["items"], earlier["items"] = (grouped[k] for k in ("week", "today", "earlier"))
+        if fallback:
+            fallback["items"] = grouped["fallback"]
+        opinion_items = grouped["opinions"]
         briefing = briefing_dashboard(s.output_dir, s.data_version)
 
         return {
@@ -472,6 +486,9 @@ def create_app(output_dir: Path | None = None,
             "opinions": {"items": opinion_items},
             "fallback": fallback,
             "covered_days": [d.get("date") for d in days],
+            "event_grouping": {"revision": EVENT_REVISION,
+                               "input_items": sum(map(len, sections.values())),
+                               "display_events": sum(map(len, grouped.values()))},
             "drivers": drivers.snapshot(s),
             "headline_exclusions": live.get("excluded", []),
             "briefing": briefing.pop("current") or load_preview(s.output_dir, s.data_version),
@@ -647,11 +664,18 @@ def create_app(output_dir: Path | None = None,
         s = snap()
         if s.pca is None:
             return {"available": False}
-        block = s.pca[s.pca["window"] == window]
+        block = s.pca[s.pca["window"] == window].sort_values("date")
+        if block.empty:
+            return {"available": False, "window": window}
         return {
             "available": True,
             "window": window,
+            "role": "panel_structure_monitor",
+            "basis": "six_pair_standardized_returns",
+            "training_end": "preceding_common_observation",
             "dates": [d.strftime("%Y-%m-%d") for d in block["date"]],
+            "var_pc1": clean_list(block["var_pc1"].to_numpy()) if "var_pc1" in block else None,
+            "var_pc2": clean_list(block["var_pc2"].to_numpy()) if "var_pc2" in block else None,
             "corr_pc1_dollar": clean_list(block["corr_pc1_dollar"].to_numpy()),
             "corr_pc2_carry": clean_list(block["corr_pc2_carry"].to_numpy()),
             "carry_projection_r2": clean_list(

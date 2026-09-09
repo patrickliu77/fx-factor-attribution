@@ -330,7 +330,11 @@ def test_bad_params_are_rejected_legibly(site):
 def test_overview_is_one_request(site):
     client, _ = site
     body = client.get("/api/overview").json()
-    assert body["status_digest"]["state"] == "green"
+    # Fixture's January success is stale at the current date; never reuse its
+    # frozen green flag as proof of current health.
+    assert body["status_digest"]["runtime"]["latest_attempt"]["state"] == "not_recorded"
+    assert body["status_digest"]["heartbeat_age_hours"] > 72
+    assert body["status_digest"]["state"] == "red"
     assert {p["pair"] for p in body["pairs"]} == {PAIR_A, PAIR_B}
     row = next(p for p in body["pairs"] if p["pair"] == PAIR_A)
     assert row["date"] == DATES[-1]

@@ -171,6 +171,8 @@ def test_browser_clock_and_delivery_are_independent_of_a_stale_build():
       assert.equal(delivery(brief,archive,build),'included_in_build');
       build.info.briefing.edition_hash='different';
       assert.equal(delivery(brief,archive,build),'not_confirmed_in_build');
-      assert.ok(briefingBoardHtml(null,{{history:[],total_editions:0}},{{}}).includes('No formal editions'));
+      const empty=briefingBoardHtml(null,{{history:[],total_editions:0}},{{}});
+      assert.ok(empty.includes('No formal edition is available'));
+      assert.ok(!empty.includes('data-brief-history'));
     '''
     subprocess.run([node,"--input-type=module","-e",script],check=True,capture_output=True,text=True)

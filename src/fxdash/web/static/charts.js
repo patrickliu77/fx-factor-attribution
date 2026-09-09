@@ -138,23 +138,46 @@ export function priceOption(data, scale) {
 }
 
 /* ------------------------------------------------------------------ sparkline */
+// A mini quote and its highlighted segment use the same two daily observations.
+// The API's `direction` covers the entire plotted range and must not color 1D.
+export function sparkObservation(data) {
+  if (!data?.available || !Array.isArray(data.values) || !Array.isArray(data.dates)
+      || data.values.length < 2 || data.values.length !== data.dates.length
+      || !data.values.every((value) => Number.isFinite(value) && value > 0)
+      || !data.dates.every((date, i) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        && Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date
+        && (i === 0 || date > data.dates[i - 1]))) return null;
+  const count = data.values.length;
+  const last = data.values[count - 1], prev = data.values[count - 2];
+  const changePct = (last / prev - 1) * 100;
+  if (!Number.isFinite(changePct)) return null;
+  return { last, prev, changePct, direction: Math.sign(last - prev), count,
+    date: data.dates[count - 1], previousDate: data.dates[count - 2], startDate: data.dates[0] };
+}
+
 export function sparkOption(data) {
   const C = tokens();
-  const color = data.direction >= 0 ? C.up : C.down;
+  const observation = sparkObservation(data);
+  const values = observation ? data.values : [];
+  const color = observation?.direction > 0 ? C.up : observation?.direction < 0 ? C.down : C.mute;
   return {
     animation: false,
-    grid: { left: 0, right: 0, top: 6, bottom: 0, containLabel: false },
-    xAxis: { type: "category", data: data.dates, show: false, boundaryGap: false },
+    grid: { left: 2, right: 2, top: 6, bottom: 4, containLabel: false },
+    xAxis: { type: "category", data: observation ? data.dates : [], show: false, boundaryGap: false },
     yAxis: { type: "value", scale: true, show: false },
     series: [{
-      type: "line", data: data.values, showSymbol: false, smooth: false,
-      lineStyle: { color, width: 1.5 },
+      id: "daily-history", type: "line", data: values, showSymbol: false, smooth: false, silent: true,
+      lineStyle: { color: C.mute, width: 1.5 },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: alpha(color, 0.22) },
-          { offset: 1, color: alpha(color, 0) },
+          { offset: 0, color: alpha(C.mute, 0.10) },
+          { offset: 1, color: alpha(C.mute, 0) },
         ]),
       },
+    }, {
+      id: "latest-daily-change", type: "line", showSymbol: false, smooth: false, silent: true,
+      data: values.map((value, i) => i >= values.length - 2 ? value : null),
+      connectNulls: false, lineStyle: { color, width: 2.2 }, z: 3,
     }],
   };
 }
