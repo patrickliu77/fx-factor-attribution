@@ -19,6 +19,16 @@ def main():
         try:
             result = C.main(["--scheduled-task"])
             print(M.now_utc().isoformat(), "catchup_entry_finished", "exit_code=" + str(result), flush=True)
+            day = M.local_time(M.now_utc()).date().isoformat()
+            state = M.read_json(repo / "outputs" / "briefing" / "catchup" / day / "status.json").get("state")
+            latest = repo / "outputs" / "operations-acceptance" / "reports" / "latest.html"
+            if state != "already_available" or not latest.exists():
+                try:
+                    from fxdash.operations import collect_report, save_report
+                    save_report(repo / "outputs", collect_report(repo / "outputs"))
+                except Exception as exc:
+                    print(M.now_utc().isoformat(), "usage_report_failed", type(exc).__name__, flush=True)
+                    return result or 1
             return result
         except BaseException as exc:
             # Never log provider exceptions containing URLs or credentials.

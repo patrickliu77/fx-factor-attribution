@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from .data.vintage_audit import audit_archive
 from .narrative import morning as M
 from .narrative.acceptance import assess
+from .narrative.usage_acceptance import assess as assess_usage
 from .narrative.morning_health import latest_observation
 
 
@@ -30,6 +31,10 @@ CHECK_LABELS = {
     "edition_on_time": "冻结稿在 09:00 至 09:02 生成",
     "matching_push": "推送回执与冻结稿哈希一致",
     "push_within_five_minutes": "推送在 09:05 前完成",
+    "current_complete_inputs": "六个货币对齐全，数据日期与实际观察时间有效",
+    "actual_edition_date": "稿件标注真实生成日期",
+    "ordered_publication": "发布发生在生成之后，回执时间有效",
+    "invocation_records_readable": "调用记录完整且身份一致",
 }
 
 
@@ -45,8 +50,9 @@ def collect_report(output_dir, *, start_date=None, clock=M.now_utc, archive_limi
         if type(required) is not int or required < 1:
             raise ValueError("invalid_acceptance_enrollment")
         acceptance = assess(output_dir, start_date=start, required_days=required, clock=lambda: observed)
-    return {"schema_version": 1, "observed_at": observed.isoformat(),
-            "acceptance": acceptance, "archive": audit_archive(output_dir, limit=archive_limit),
+    return {"schema_version": 2, "observed_at": observed.isoformat(),
+            "acceptance": assess_usage(output_dir, start_date=start, clock=lambda: observed),
+            "scheduled_acceptance": acceptance, "archive": audit_archive(output_dir, limit=archive_limit),
             "clock_observation": latest_observation(output_dir, clock=lambda: observed),
             "scope": "Local saved artifacts only. No fetching, model fitting, generation or publication."}
 
@@ -81,24 +87,37 @@ def render_report(report):
     baseline_count = sum(r["kind"] == "cache_baseline" for r in records)
     due_days = acceptance["days"]
     passed_days = sum(r["passed"] for r in due_days)
-    labels = {"passed": "运行验收通过", "collecting": "等待首个验收日",
-              "not_yet_passed": "尚未通过验收", "not_enrolled": "尚未设置验收起点"}
+    labels = {"delivered": "最近使用日已有交付", "no_activity": "尚无实际使用记录",
+              "waiting": "等待可用输入", "attention": "实际运行需要检查",
+              "completion_unconfirmed": "运行完成情况待确认", "observed_no_delivery": "已观察到调用，尚无交付"}
     status = labels[acceptance["state"]]
-    tone = "good" if acceptance["state"] == "passed" else "pending"
+    tone = "good" if acceptance["state"] == "delivered" else "pending"
     if archive["issues"] or comparison["state"] == "comparison_failed":
         status, tone = "留档需要检查", "pending"
-    day_html = '<p class="empty">还没有到期的验收日。预览、人工试跑和测试数据都不计入正式记录。</p>'
+    day_html = '<p class="empty">尚无实际使用记录。没有调用记录的日期不计为故障，也无法据此判断电脑是否开机。</p>'
     if due_days:
         parts = []
         for row in reversed(due_days[-20:]):
             checks = "".join(f'<li class="{"ok" if value else "fail"}">{"通过" if value else "未通过"} · '
                              f'{_text(CHECK_LABELS.get(key, key))}</li>' for key, value in row["checks"].items())
             problems = _table(("文件", "记录问题"), ((r["file"], r["reason"]) for r in row["record_issues"])) if row["record_issues"] else ""
+            context = row["context"]
+            context_text = f'通过规则检查的解读 {_text(context["verified_notes"])} 条'
+            if context["generation_failed"]:
+                context_text += '，存在生成失败，覆盖不完整'
+            elif context.get("rejected_notes"):
+                context_text += f'，{context["rejected_notes"]} 条草稿未通过检查'
+            if context.get("draft_evidence") == "unreadable_or_mismatched":
+                context_text += '，草稿证据无法核对'
+            automatic = '原始自动生成与交付链已核对' if row["automation"] == "confirmed" else '原始自动生成来源证据不足；后来的定时检查不补作证明'
+            problems += f'<p class="note">已记录执行问题：{_text(", ".join(row["failures"]))}</p>' if row["failures"] else ''
             parts.append(f'<details class="day"><summary><span class="mono">{_text(row["date"])}</span>'
-                         f'<span>{"通过" if row["passed"] else "未通过"} · '
-                         f'{"含事件解读" if row["context_included"] else "无合格事件解读"}</span></summary>'
-                         f'<ul class="checks">{checks}</ul>{problems}'
-                         f'<p class="muted">未结束调用：{_text(row["unfinished_invocations"])}</p></details>')
+                         f'<span>{"交付证据已核对" if row["passed"] else _text(labels[row["state"]])} · {context_text}</span></summary>'
+                         f'<p class="note">归因截至 {_text(row["attribution_as_of"])}；生成于 {_text(row["generated_at"])}；发布于 {_text(row["published_at"])}</p>'
+                         f'<p class="note">{automatic}</p>'
+                         + (f'<ul class="checks">{checks}</ul>' if row["edition_state"] != "missing" or row["state"] == "attention" else
+                            f'<p class="note">当前观察：{_text(row["waiting_reason"] or row["state"])}。尚未交付不等于生成失败。</p>')
+                         + f'{problems}<p class="muted">未结束调用：{_text(row["unfinished_invocations"])}</p></details>')
         day_html = "".join(parts)
         if len(due_days) > 20:
             day_html += '<p class="muted">此处显示最近 20 个验收日，完整记录保存在同目录 report.json。</p>'
@@ -139,21 +158,26 @@ def render_report(report):
     elif gate["state"] == "unreadable":
         clock_html = '<p class="empty">最近的窗口外调度记录无法校验，请检查原始文件。</p>'
     else:
-        meaning = ("启动时已错过晨间窗口，当天没有完整晨报及匹配的推送回执。结果码为 2，留待下一工作日。"
+        meaning = ("启动时已超过可选晨间窗口。这个时钟观察不计为故障，实际交付以上方使用记录为准。"
                    if gate["state"] == "missed_window" else
                    "周末无需出刊。" if gate["phase"] == "weekend" else
                    "尚未进入晨间窗口。" if gate["phase"] == "before_window" else
-                   "窗口已结束，已保存晨报与匹配的推送回执；是否按时仍以上方验收为准。")
+                   "窗口已结束，已保存晨报与匹配的推送回执。")
         clock_html = (f'<p class="empty">{meaning}</p><p class="mono small">观察时间：{_text(gate["observed_at"])}</p>'
                       '<p class="note">窗口外只记录状态，不补抓新闻、不调用模型、不补造晨报、不发布。'
-                      '此记录不计入正式出刊，推送回执也不能证明公网部署完成。</p>')
+                      '独立补发任务会在可用时运行。推送回执不能证明公网部署完成。</p>')
+    scheduled = report.get("scheduled_acceptance", {})
+    legacy_html = (f'<p class="note">旧准时口径：连续 {_text(scheduled.get("consecutive_passes", 0))} / '
+                   f'{_text(scheduled.get("required_consecutive_weekdays", 5))} 个工作日。'
+                   '这里只保留可选能力诊断，不作为当前项目验收门槛。旧报告与稿件未改写。</p>')
     fonts, licenses = _font_styles()
     values = {"FONTS": fonts, "LICENSES": licenses, "STATUS": _text(status), "TONE": tone,
               "OBSERVED": _text(report["observed_at"]),
               "LOCAL_TIME": _text(observed.astimezone(ZoneInfo(M.ZONE)).strftime("%Y-%m-%d %H:%M:%S %Z")),
               "ENGINE": str(engine_count), "BASELINE": str(baseline_count),
-              "STREAK": str(acceptance["consecutive_passes"]), "REQUIRED": str(acceptance["required_consecutive_weekdays"]),
               "START": _text(acceptance["start_date"]), "DUE": str(len(due_days)), "PASSED": str(passed_days),
+              "AUTOMATED": str(acceptance["automated_days"]), "GENERATION_ISSUES": str(acceptance["generation_issue_days"]),
+              "LEGACY": legacy_html,
               "CONTEXT": str(acceptance["event_context_days"]), "DAYS": day_html, "CLOCK": clock_html, "INVENTORY": inventory,
               "ISSUES": issues, "CHANGES": change_html, "LIMIT": str(archive["inspection_limit"]),
               "CHECKED": str(archive["checked_files"]), "TOTAL": str(archive["total_capture_files"])}

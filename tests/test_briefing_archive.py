@@ -156,10 +156,10 @@ def test_browser_clock_and_delivery_are_independent_of_a_stale_build():
       const {{dueEdition,freshness,delivery,briefingBoardHtml}}=await import({json.dumps(uri)});
       const assert=(await import('node:assert/strict')).default;
       const samples=[
-        ['2026-01-08T13:59:00Z','2026-01-07'],['2026-01-08T14:00:00Z','2026-01-08'],
-        ['2026-09-05T13:00:00Z','2026-09-04'],['2026-09-07T12:59:00Z','2026-09-04'],
+        ['2026-01-08T13:59:00Z','2026-01-08'],['2026-01-08T14:00:00Z','2026-01-08'],
+        ['2026-09-05T13:00:00Z','2026-09-04'],['2026-09-07T12:59:00Z','2026-09-07'],
         ['2026-09-07T13:00:00Z','2026-09-07'],['2026-03-09T13:00:00Z','2026-03-09'],
-        ['2026-11-02T13:59:00Z','2026-10-30'],['2026-11-02T14:00:00Z','2026-11-02'],
+        ['2026-11-02T13:59:00Z','2026-11-02'],['2026-11-02T14:00:00Z','2026-11-02'],
       ];
       for(const [stamp,expected] of samples) assert.equal(dueEdition(new Date(stamp)),expected);
       const brief={{mode:'edition',date:'2026-09-04',edition_hash:'abc',state:'ready'}};
@@ -172,7 +172,7 @@ def test_browser_clock_and_delivery_are_independent_of_a_stale_build():
       build.info.briefing.edition_hash='different';
       assert.equal(delivery(brief,archive,build),'not_confirmed_in_build');
       const empty=briefingBoardHtml(null,{{history:[],total_editions:0}},{{}});
-      assert.ok(empty.includes('No formal edition is available'));
+      assert.ok(empty.includes('No saved briefing is available'));
       assert.ok(!empty.includes('data-brief-history'));
     '''
     subprocess.run([node,"--input-type=module","-e",script],check=True,capture_output=True,text=True)

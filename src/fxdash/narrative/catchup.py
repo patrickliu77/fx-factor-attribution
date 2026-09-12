@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from datetime import date, datetime, time
 from pathlib import Path
+import uuid
 
 from . import morning as M, briefing_archive as A
 
@@ -152,6 +153,11 @@ def run(output_dir, repo, *, clock=M.now_utc, collector=None, client_factory=M.m
     try:
         # Share the original dispatch lock to avoid racing morning publication.
         with M.DayLock(output_dir / "briefing" / "days" / day / "dispatch.lock"):
+            ledger = output_dir / "briefing" / "catchup" / day / "invocations"
+            run_id = moment.strftime("%Y%m%dT%H%M%S%f") + "-" + uuid.uuid4().hex
+            started = {"run_id": run_id, "source": invocation_source, "date": day,
+                       "started_at": moment.isoformat(), "state": "started"}
+            M.atomic_json(ledger / (run_id + ".start.json"), started)
             M.atomic_json(output_dir / "briefing" / "catchup" / day / "status.json",
                           {"state": "preparing", "source": invocation_source, "date": day,
                            "started_at": moment.isoformat(), "observed_at": moment.isoformat()})
@@ -161,9 +167,18 @@ def run(output_dir, repo, *, clock=M.now_utc, collector=None, client_factory=M.m
                               publisher=publisher or publish_site)
             except Exception as exc:
                 result = {"state": "catchup_failed", "date": day, "error": type(exc).__name__}
+            except BaseException:
+                M.atomic_json(ledger / (run_id + ".finish.json"), dict(started,
+                              state="exception", finished_at=clock().isoformat()))
+                raise
             observation = {**result, "source": invocation_source,
                            "started_at": moment.isoformat(), "observed_at": clock().isoformat()}
             M.atomic_json(output_dir / "briefing" / "catchup" / day / "status.json", observation)
+            kind = result.get("kind", "catchup")
+            saved = output_dir / "briefing" / ("days" if kind == "edition" else "catchup") / day / "edition.json"
+            edition = A.read_edition(saved, mode=kind) if saved.exists() else {}
+            M.atomic_json(ledger / (run_id + ".finish.json"), dict(started, state=result["state"],
+                          finished_at=clock().isoformat(), edition_hash=edition.get("edition_hash")))
             return result
     except M.Busy:
         return {"state": "busy", "date": day}

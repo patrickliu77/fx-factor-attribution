@@ -61,7 +61,8 @@ def test_append_clock_history_cannot_count_as_formal_acceptance(tmp_path):
     assert not assess_day(tmp_path, "2026-01-08")["passed"]
     report = O.collect_report(tmp_path, start_date="2026-01-08", clock=lambda: moment(15))
     assert report["clock_observation"]["state"] == "missed_window"
-    assert "结果码为 2" in O.render_report(report)
+    assert "这个时钟观察不计为故障" in O.render_report(report)
+    assert report["acceptance"]["state"] == "no_activity"
 
 
 @pytest.mark.parametrize("bad", [
@@ -75,7 +76,7 @@ def test_invalid_clock_record_visible_as_unreadable(tmp_path, bad):
     assert H.latest_observation(tmp_path, clock=lambda: moment(15))["state"] == "unreadable"
 
 
-def test_check_is_read_only_and_missed_scheduled_invocation_returns_two(tmp_path, monkeypatch, capsys):
+def test_check_is_read_only_and_optional_missed_slot_is_not_execution_failure(tmp_path, monkeypatch, capsys):
     before = set(tmp_path.rglob("*"))
     monkeypatch.setattr(M, "now_utc", lambda: moment(15))
     # dispatch's captured default clock is explicit here to keep production time out of tests.
@@ -83,7 +84,7 @@ def test_check_is_read_only_and_missed_scheduled_invocation_returns_two(tmp_path
     monkeypatch.setattr(G, "dispatch", lambda output, repo, **kw: dispatch(output, repo, clock=lambda: moment(15), **kw))
     assert G.main(["--output-dir", str(tmp_path), "--check"]) == 0
     assert set(tmp_path.rglob("*")) == before
-    assert G.main(["--output-dir", str(tmp_path), "--scheduled-task"]) == 2
+    assert G.main(["--output-dir", str(tmp_path), "--scheduled-task"]) == 0
     assert '"missed_window"' in capsys.readouterr().out
 
 

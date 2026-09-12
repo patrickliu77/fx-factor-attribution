@@ -28,24 +28,26 @@ footer{font-size:12px;color:var(--muted)}footer pre{white-space:pre-wrap;overflo
 <header>
 <div class="eyebrow">FX RESEARCH / OPERATIONS</div>
 <div class="heading"><h1>每天的结果，留下依据。</h1><span class="badge {{TONE}}">{{STATUS}}</span></div>
-<p class="muted">输入留档与晨报运行验收。只检查已经保存的记录，不运行模型。</p>
+<p class="muted">按实际使用核对交付与输入留档。只检查已经保存的记录，不运行模型。</p>
 <div class="small">报告观察时间：<time id="observed" datetime="{{OBSERVED}}" class="mono">{{LOCAL_TIME}}</time> · 纽约时间</div>
 </header>
 <p id="stale" hidden role="status">这份快照已超过 6 小时。请核对最新报告的观察时间；重新生成报告才会读取新的运行记录。</p>
 <div class="metrics" aria-label="验收概览">
 <div class="metric"><p>完整引擎输入</p><strong>{{ENGINE}}</strong><p class="small">近期已校验的快照</p></div>
 <div class="metric"><p>缓存基线</p><strong>{{BASELINE}}</strong><p class="small">仅代表留档时看到的缓存</p></div>
-<div class="metric"><p>连续通过</p><strong>{{STREAK}}<small> / {{REQUIRED}} 日</small></strong><p class="small">真实工作日运行</p></div>
+<div class="metric"><p>已核对交付</p><strong>{{PASSED}}<small> 日</small></strong><p class="small">观察到 {{DUE}} 个使用日，无固定天数门槛</p></div>
 </div>
 <section>
-<div class="section-top"><h2>01 · 晨报有没有按时完成</h2><span>验收起点 <span class="mono">{{START}}</span></span></div>
-<p class="note">已到期 {{DUE}} 日，通过 {{PASSED}} 日，含合格事件解读 {{CONTEXT}} 日。每天纽约时间 09:05 后计入验收。</p>
+<div class="section-top"><h2>01 · 实际使用时有没有交付</h2><span>记录起点 <span class="mono">{{START}}</span></span></div>
+<p class="note">观察到 {{DUE}} 个使用日，交付证据核对 {{PASSED}} 日，原始自动生成链确认 {{AUTOMATED}} 日。含通过规则检查的事件解读 {{CONTEXT}} 日，存在生成问题 {{GENERATION_ISSUES}} 日。</p>
 {{DAYS}}
 <details><summary>最近的窗口外调度观察</summary>{{CLOCK}}</details>
 <details><summary>查看验收口径</summary>
-<p class="note">要求真实定时采集、完整输入与哈希校验、按时冻结稿，以及与该稿匹配的推送回执。纯数字晨报可以通过运行验收，事件解读覆盖另行计数。人工试跑不计入。五个连续工作日全部满足要求，才能通过本轮验收。</p>
+<p class="note">不要求固定时刻出刊或连续开机。检查完整且足够新的输入、真实日期、冻结稿和匹配的推送回执。没有调用记录的日期不判故障；缺数据列为等待，真实执行失败保持可见。数字版可以完成交付，新闻解读质量另行记录。</p>
+<p class="note">原始自动生成链需要起止调用记录支持。人工生成或缺少旧调用记录的稿件仍可核对交付，单独标明自动化来源未证实。任何交付计数都不等同于长期可用率。</p>
 <p class="note">推送回执只证明本地发布流程返回成功。此报告尚未核对 GitHub Pages 的构建状态和公网内容。</p>
 </details>
+<details><summary>可选的固定时段诊断</summary>{{LEGACY}}</details>
 </section>
 <section>
 <div class="section-top"><h2>02 · 输入有没有留得住</h2><span>检查最近 {{LIMIT}} 份以内的清单</span></div>

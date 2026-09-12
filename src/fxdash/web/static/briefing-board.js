@@ -3,15 +3,14 @@ import {briefingHtml} from './context.js';
 const copy = (en,zh) => getLang()==='zh' ? zh : en;
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// Uses the reader's current clock, never an age frozen at build time. This is a
-// timetable comparison, not evidence that the Windows scheduler is running.
+// Compare calendar dates, never infer that an unavailable host failed to run.
+// The optional 09:00 timetable is not the current product acceptance policy.
 export function dueEdition(now=new Date()) {
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
     timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',
     hour:'2-digit',hourCycle:'h23',
   }).formatToParts(now).map(p=>[p.type,p.value]));
   const day=new Date(`${parts.year}-${parts.month}-${parts.day}T12:00:00Z`);
-  if (Number(parts.hour)<9) day.setUTCDate(day.getUTCDate()-1);
   while ([0,6].includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate()-1);
   return day.toISOString().slice(0,10);
 }
@@ -62,33 +61,35 @@ const label = state => ({
 function freshnessHtml(current, now) {
   const {state,due}=freshness(current,now);
   const wording={
-    no_edition:copy('No formal edition is available in this snapshot.','当前快照尚无正式晨报。'),
-    ahead_of_due_date:copy('The edition date is ahead of the timetable. Check the reader and host clocks.','稿件日期早于计划时点，请检查浏览器与主机时钟。'),
-    older_edition:copy('The displayed edition is older than the latest scheduled date.','当前显示的晨报早于最近应出刊日期。'),
-    current_edition:copy('An edition record is available for the latest scheduled date.','最近应出刊日期已有稿件记录。'),
-    current_catchup:copy('A catch-up briefing is available for this date. The 09:00 timing requirement remains unmet.','本日已有补发简报，09:00 按时出刊要求仍未满足。'),
+    no_edition:copy('No saved briefing is available in this snapshot. The host can prepare one when inputs are available.','当前快照尚无已保存简报，主机可在输入齐备后生成。'),
+    ahead_of_due_date:copy('The edition has a future date. Check the reader and host clocks.','稿件日期晚于当前日期，请检查浏览器与主机时钟。'),
+    older_edition:copy('This is an earlier briefing. A new edition can be prepared when the host is available; absence alone does not establish a failed run.','当前显示较早的简报。主机可用后可生成新稿，缺少本日稿件本身无法证明运行失败。'),
+    current_edition:copy('A saved briefing is available for this date.','本日已有保存的简报。'),
+    current_catchup:copy('A catch-up briefing is available for this date. Delivery is checked when the host is available, without a fixed publication deadline.','本日已有补发简报，按主机可用时的实际交付检查，不设固定出刊时刻。'),
     archive_unreadable:copy('The latest edition file could not be read. Earlier editions remain in the archive.','最新晨报文件无法读取，较早稿件仍可从历史记录查看。'),
   }[state];
-  return `<p class="brief-freshness hint" data-freshness="${state}">${wording} ${copy('Latest scheduled date','最近应出刊日期')} ${esc(due)} · 09:00 America/New_York</p>`;
+  return `<p class="brief-freshness hint" data-freshness="${state}">${wording} ${copy('Reference weekday','日期参考')} ${esc(due)} · America/New_York</p>`;
 }
 
 function statusHtml(current, archive, build, now) {
   const run=archive?.latest_run;
+  const late=current?.mode==='catchup';
+  const attempt=archive?.latest_catchup_run;
   const cell=(title,state,stamp)=>`<div><dt>${title}</dt><dd>${esc(label(state))}</dd>${stamp ? `<small>${esc(stamp)}</small>` : ''}</div>`;
   return `${freshnessHtml(current,now)}<details class="brief-run-details"><summary>${copy('Run details','运行详情')} · ${esc(label(delivery(current,archive,build)))}</summary><dl class="brief-status-grid">
-    ${cell(copy('Last preparation record','最近准备记录'),run?.prepare?.state || 'not_recorded',run?.prepare?.started_at)}
-    ${cell(copy('Last edition record','最近稿件记录'),run?.edition?.state || 'not_recorded',run?.edition?.generated_at)}
+    ${cell(late ? copy('Latest catch-up check','最近补发检查') : copy('Last preparation record','最近准备记录'),late ? attempt?.state || 'not_recorded' : run?.prepare?.state || 'not_recorded',late ? attempt?.observed_at : run?.prepare?.started_at)}
+    ${cell(copy('Latest available edition','最新可用稿件'),current?.state || 'not_recorded',current?.generated_at)}
     ${cell(copy('Latest available edition delivery','最新可用稿件交付情况'),delivery(current,archive,build),build.mode==='static' ? build.info?.built_at : (archive?.current_push?.finished_at || run?.push?.finished_at))}
     </dl><p class="hint">${copy('Run records observed','运行记录读取于')} ${esc(archive?.observed_at)}${run ? ` · ${copy('Run date','运行日期')} ${esc(run.date)}` : ''}</p>
     ${archive?.latest_catchup_run ? `<p class="hint">${copy('Catch-up check','补发检查')} ${esc(archive.latest_catchup_run.date)}: ${esc(label(archive.latest_catchup_run.state))} · ${esc(archive.latest_catchup_run.observed_at || '')}</p>` : ''}
-    <p class="hint">${copy('08:50 capture, 09:00 edition, New York weekdays. After login, a separate task can issue a dated catch-up briefing. These are saved observations, not a scheduler heartbeat. A static page cannot see a later failed push; refresh to check for a newer build.','美东工作日 08:50 采集，09:00 出刊。登录后，独立任务可生成标注日期的补发简报。这里展示已保存记录，无法据此确认调度器仍在运行。静态页面看不到之后发生的推送失败，可刷新检查新构建。')}</p></details>`;
+    <p class="hint">${copy('After login, the catch-up task checks for usable inputs and a saved briefing. There is no fixed publication deadline or consecutive-day quota. The existing New York morning slot is optional. Saved observations cannot establish current scheduler health; a static page cannot see a later failed push.','登录后，补发任务会检查可用输入和已保存稿件。不设固定出刊时刻或连续天数门槛，原有纽约晨间时段保留为可选能力。已保存记录无法证明调度器当前状态，静态页面也看不到之后发生的推送失败。')}</p></details>`;
 }
 
 export function briefingBoardHtml(current, archive, build, now=new Date()) {
   if (!archive) return briefingHtml(current);
   const history=[...(archive.history || []),...(archive.catchup_history || [])].sort((a,b)=>b.date.localeCompare(a.date));
   const key=e=>e.mode==='catchup' ? 'catchup:'+e.date : e.date;
-  return `<section class="brief-board col gap14"><h2 class="sec">${copy('Morning edition desk','晨报记录')}</h2>
+  return `<section class="brief-board col gap14"><h2 class="sec">${copy('Briefing archive','简报记录')}</h2>
     <div data-brief-status>${statusHtml(current,archive,build,now)}</div>
     ${current?.available || history.length ? `<label class="brief-history-label">${copy('Read an edition','选择稿件')}
       <select data-brief-history aria-label="${copy('Morning edition archive','晨报历史记录')}">

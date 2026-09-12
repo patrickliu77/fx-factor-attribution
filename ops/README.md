@@ -303,8 +303,8 @@ publisher also holds a named mutex across building and pushing the site.
 five minutes until 10:00, using the same edition. Success means the Git push
 completed; GitHub Pages deployment can finish later. Evening publication can
 pick up an edition if the morning push failed. Logs go to `outputs/logs/briefing.log`.
-Existing pipeline and residual-narrative status files are untouched. The first
-natural weekday run is still an operational acceptance item. No audio is generated.
+Existing pipeline and residual-narrative status files are untouched. This morning
+slot is optional under actual-use acceptance. No audio is generated.
 
 The News payload now includes the latest twenty frozen editions and the most
 recent preparation/edition/push observations. Public fields are explicitly
@@ -463,12 +463,12 @@ show the attempt observed at build time; it has no live connection to the schedu
 Native failure on September 8 was not reproduced by replay. Root cause is still
 unresolved; logs and exit-code tests establish visibility, not elimination of the fault.
 
-## Login catch-up and formal acceptance
+## Login catch-up and actual-use acceptance
 
 ```powershell
 powershell -File ops/register_catchup_task.ps1 -WhatIf
 powershell -File ops/register_catchup_task.ps1
-python -m fxdash.narrative.acceptance --start-date 2026-09-08
+python -m fxdash.narrative.usage_acceptance --start-date 2026-09-08
 python -m fxdash.operations
 ```
 
@@ -477,18 +477,38 @@ is available. It does not wake the computer. On New York weekdays after 09:05,
 it reuses an existing readable edition or waits for current attribution and usable
 news before preparing a late edition. Its files live under
 `outputs/briefing/catchup/YYYY-MM-DD/`. It does not replace the morning archive,
-recreate missed historical editions, or count toward on-time acceptance.
+recreate missed historical editions, or claim to have run at 09:00.
 
 Each day has one generation claim. Retrying a push reuses frozen text. Failed
 generation can leave a numbers-only edition; a later service recovery does not
 silently rewrite it. Two minutes is a check delay, not a delivery guarantee.
 
-Acceptance checks matching scheduled start/finish records, identities, inputs,
-preparation completed before 09:00, an edition generated between 09:00 and 09:02,
-and publication completed before 09:05 with a matching push receipt. Five consecutive
-weekdays are required. Manual recovery,
-idle checks and late editions are excluded. Public Pages deployment is verified
-separately. September 8 remained 0/5; the late numbers-only edition stays separate.
+Acceptance now follows actual use, with no fixed publication deadline or consecutive
+day quota. Dates without invocation or artifact evidence are unobserved. Waiting
+for attribution or news is reported separately from failed execution. A delivery
+needs six complete, sufficiently recent pair inputs, their verified input archive,
+real observation/generation/publication times and a matching push hash. Numeric
+delivery and event-context coverage are separate; request failures stay visible.
+
+New catch-up attempts append `invocations/*.start.json` and `*.finish.json`.
+Original automated generation and publication need matching source and time evidence;
+a later scheduled check cannot prove that an older manually created edition was
+automatic. Historical editions remain valid delivery evidence even when their
+original invocation provenance is unavailable. Reports identify that limitation.
+
+`python -m fxdash.operations` writes a new actual-use report, keeps every previous
+snapshot and updates only `outputs/operations-acceptance/reports/latest.html`.
+Actual catch-up attempts refresh this report; repeated checks of an already available
+edition do not keep rebuilding it. The optional morning clock still records missed
+windows, but those observations return zero and do not fail actual-use acceptance.
+Real generation/publication errors keep their failure states.
+
+For the optional historical timetable diagnostic, run
+`python -m fxdash.narrative.acceptance --start-date 2026-09-08`. It retains its original
+08:50/09:00 and five-consecutive-weekday rules. Its result is no longer a release
+gate. The old `briefing/acceptance.json` is retained as enrollment evidence, not
+rewritten to change old results. Public Pages delivery must still be checked separately.
+See [the policy and limits](../docs/USAGE_ACCEPTANCE_20260910.md).
 
 ## Offline research and input archives
 

@@ -17,11 +17,12 @@ from test_vintages import capture
 def test_empty_future_report_is_read_only_and_honest(tmp_path):
     before = set(tmp_path.rglob("*"))
     report = O.collect_report(tmp_path, start_date="2026-09-08", clock=lambda: datetime.fromisoformat("2026-09-07T21:00:00+00:00"))
-    assert report["acceptance"]["state"] == "collecting"
+    assert report["acceptance"]["state"] == "no_activity"
+    assert report["scheduled_acceptance"]["state"] == "collecting"
     assert report["archive"]["state"] == "missing"
     assert set(tmp_path.rglob("*")) == before
     html = O.render_report(report)
-    assert "等待首个验收日" in html and "还没有到期的验收日" in html
+    assert "尚无实际使用记录" in html and "没有调用记录的日期不计为故障" in html
     assert "data:font/woff2;base64," in html
     assert "{{" not in html
     assert '<script src=' not in html and '<link ' not in html
@@ -54,7 +55,9 @@ def test_real_synthetic_chain_has_checks_and_no_public_delivery_claim(tmp_path, 
     completed_day(tmp_path, synthetic_raw)
     report = O.collect_report(tmp_path, start_date="2026-01-08", clock=lambda: moment(14, 6))
     html = O.render_report(report)
-    assert report["acceptance"]["consecutive_passes"] == 1
+    assert report["scheduled_acceptance"]["consecutive_passes"] == 1
+    assert report["acceptance"]["delivered_days"] == 1
+    assert report["acceptance"]["automated_days"] == 1
     assert report["acceptance"]["event_context_days"] == 0
     assert "调用记录完整且身份一致" in html
     assert "此报告尚未核对 GitHub Pages" in html

@@ -208,7 +208,8 @@ def test_browser_labels_and_same_day_history_remain_distinct():
         I.setLang(lang);
         const html=C.briefingHtml(late), desk=B.briefingBoardHtml(late,archive,{},new Date('2026-09-08T17:00:00Z'));
         assert.ok(html.includes(lang==='en'?'Catch-up briefing':'补发简报'));
-        assert.ok(html.includes(lang==='en'?'does not count as an on-time':'不计作'));
+        assert.ok(html.includes(lang==='en'?'no fixed publication deadline':'不设固定出刊时刻'));
+        assert.ok(!desk.includes(lang==='en'?'requirement remains unmet':'按时出刊要求仍未满足'));
         assert.ok(!html.includes(lang==='en'?'Validation preview':'运行验收预览'));
         assert.ok(desk.includes('value="2026-09-08"'));
         assert.ok(!/[—–]/.test(html));

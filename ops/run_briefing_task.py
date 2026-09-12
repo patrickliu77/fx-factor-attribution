@@ -21,16 +21,15 @@ def main():
             result = dispatch(["--scheduled-task"])
             print(M.now_utc().isoformat(), "scheduled_entry_finished", "exit_code=" + str(result), flush=True)
             enrollment = M.read_json(repo / "outputs" / "briefing" / "acceptance.json")
-            # A late start needs a report too; do not leave the last pre-deadline
-            # report saying "waiting" after a missed morning. Report failures are
-            # separate from the completed dispatch and its task result code.
-            if (action != "idle" or result == 2) and enrollment.get("start_date"):
+            # The optional clock window is no longer the primary acceptance.
+            # Catch-up writes its own usage report after an actual attempt.
+            if action != "idle" and enrollment.get("start_date"):
                 from fxdash.operations import collect_report, save_report
                 import uuid
                 try:
                     report = collect_report(repo / "outputs")
                     name = M.now_utc().strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8] + ".json"
-                    M.atomic_json(repo / "outputs" / "operations-acceptance" / name, report["acceptance"])
+                    M.atomic_json(repo / "outputs" / "operations-acceptance" / ("usage-" + name), report["acceptance"])
                     # Reports read saved artifacts only, after the time-sensitive dispatch.
                     save_report(repo / "outputs", report)
                 except Exception as exc:

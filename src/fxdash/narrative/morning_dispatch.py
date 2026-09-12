@@ -120,8 +120,8 @@ def main(argv=None):
                       invocation_source="scheduled_task" if args.scheduled_task else "manual")
     if result["state"] != "idle" or args.scheduled_task:
         print(json.dumps(result, ensure_ascii=True))
-    if result["state"] == "missed_window":
-        return 2
+    # Retain the timetable observation, but an unavailable optional morning slot
+    # is not an execution failure under actual-use acceptance.
     return 1 if result["state"] in ("prepare_failed", "publish_failed", "finalize_failed", "ineligible_packet") else 0
 
 

@@ -34,7 +34,8 @@ try {
     const select=board.locator('[data-brief-history]');
     assert.equal(await select.locator('option').count(),2);
     assert.ok((await board.innerText()).includes(lang==='en'?'Catch-up briefing':'补发简报'));
-    assert.ok((await board.innerText()).includes(lang==='en'?'does not count as an on-time':'不计作'));
+    assert.ok((await board.innerText()).includes(lang==='en'?'no fixed publication deadline':'不设固定出刊时刻'));
+    assert.ok(!(await board.innerText()).includes(lang==='en'?'requirement remains unmet':'按时出刊要求仍未满足'));
     assert.ok(!(await board.locator('[data-brief-content]').innerText()).includes(lang==='en'?'Validation preview':'运行验收预览'));
     await select.selectOption('2026-09-08');
     assert.equal(await board.locator('[data-briefing-mode]').getAttribute('data-briefing-mode'),'edition');

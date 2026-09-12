@@ -7,11 +7,15 @@ reported as a residual, with a news note when it is unusually large.
 
 [Open the dashboard](https://patrickliu77.github.io/fx-factor-attribution/)
 or read the [methodology](https://patrickliu77.github.io/fx-factor-attribution/#/methodology).
-Attribution updates each evening. A weekday text edition is prepared for 09:00
-America/New_York. The page labels the attribution date, news retrieval time and
-publication status separately. It covers completed trading days.
+Attribution updates each evening. After login, a weekday catch-up task prepares
+a dated briefing when saved inputs are available. There is no fixed publication
+deadline or consecutive-day quota for acceptance. The existing 09:00 New York slot
+is optional. Attribution dates, news retrieval times and publication status are
+labelled separately. The analysis covers completed trading days.
 
-The [September 8 release notes](docs/RELEASE_20260908.md) record the current scope,
+The [September 12 release](docs/RELEASE_20260912.md) records the latest changes and checks.
+The [actual-use acceptance policy](docs/USAGE_ACCEPTANCE_20260910.md) describes the
+current delivery checks. The [September 8 release notes](docs/RELEASE_20260908.md) record the earlier scope,
 verification and remaining operational work. Production model choices are unchanged;
 the [offline research findings](docs/RESEARCH_FINDINGS_20260908.md) explain why.
 
@@ -167,7 +171,7 @@ candidate set; they do not measure causal explanations or web-wide news recall.
 The sheet works without a server, retains the site's fonts and exports progress
 as a local JSON download. See [the review commands](ops/README.md#local-news-review).
 
-## Morning text edition
+## Daily briefing and optional morning slot
 
 At 08:50 New York time, the morning job saves the previous session's attribution
 and the news it actually retrieved. It then requests short bilingual notes for
@@ -184,9 +188,9 @@ The job follows New York daylight saving time and requires the host to be runnin
 with its user signed in. GitHub Pages may take a few minutes to deploy the push.
 
 Outside the morning window, the scheduled entry saves a local clock observation
-without fetching, generating or publishing. A late weekday invocation returns
-code 2 when the day's readable briefing and matching push receipt are missing.
-A normal exit outside the window does not prove on-time delivery. Clock
+without fetching, generating or publishing. Missing the optional morning window
+is not an execution failure. A normal exit outside the window does not establish
+delivery. Clock
 observations stay separate from the frozen editions and acceptance evidence.
 
 If the computer becomes available later, a separate catch-up task can generate a
@@ -194,7 +198,8 @@ dated briefing after 09:05 New York time. It checks two minutes after login and
 every fifteen minutes while the host is available, without waking the computer.
 It waits for current saved attribution and usable news access. New evidence is
 timestamped when retrieved; the resulting text is labelled **Catch-up briefing**.
-It never counts as an on-time morning edition or replaces the original archive.
+It qualifies as delivery evidence under actual-use acceptance and leaves the
+original morning archive unchanged. It is not described as a 09:00 edition.
 One daily generation claim limits repeated model calls. Failed pushes retry the
 frozen text. When a readable morning edition already exists, only its missing
 push is retried. Register this optional task with
@@ -211,8 +216,11 @@ Run `python -m fxdash.narrative.morning --mode preview` for an explicitly labell
 validation preview. Register the clock gate with
 `powershell -File ops/register_briefing_task.ps1`; the operations manual explains
 the schedule and failure handling. Preview runs are never historical editions.
-As of September 8, the five-consecutive-weekday morning acceptance is still 0/5.
-The saved afternoon catch-up and manual recovery do not count as on-time editions.
+Since September 10, acceptance examines actual saved deliveries without a fixed
+hour or a five-day streak. Days without invocation evidence are unobserved, not
+failed. Complete inputs, real timestamps, input archives and matching push hashes
+are still required. Automation provenance and news coverage are reported separately.
+The earlier on-time reports remain archived as optional timetable diagnostics.
 Free-form AI outlooks are
 withheld: validation samples inferred policy effects unsupported by the retrieved
 titles. Richer event evidence and semantic evaluation are needed before that
