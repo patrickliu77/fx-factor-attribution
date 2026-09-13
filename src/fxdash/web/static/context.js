@@ -1,4 +1,5 @@
 import { getLang, t } from './i18n.js';
+import { audioHtml } from './briefing-audio.js';
 const copy = (en, zh) => getLang() === 'zh' ? zh : en;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const bp = x => x == null ? 'n/a' : `${x>0?'+':''}${x.toFixed(1)} bp`;
@@ -81,6 +82,7 @@ export function briefingHtml(brief) {
   }).join('');
   return `<section class="brief-preview col gap14" data-briefing-state="${esc(brief.state || 'preview')}" data-briefing-mode="${esc(brief.mode)}"><h2 class="sec">${catchup ? copy('Catch-up briefing','补发简报') : formal ? copy('Morning briefing','文字晨报') : copy('Text briefing preview','文字简报预览')} ${esc(brief.date || '')}</h2>
     <p class="hint">${copy('Attribution through','归因截至')} ${esc(brief.attribution_as_of)} · ${copy('News observed by','新闻抓取截至')} ${esc(brief.news_observed_by)}</p>
+    ${audioHtml(brief)}
     <p>${esc(brief.text?.[lang] || brief.text?.en || '')}</p>
     ${catchup ? `<p class="hint">${copy('Prepared when the host and inputs were available. News was collected at the actual times above; no fixed publication deadline applies.','本期在主机与输入可用后生成，新闻按上方实际时间采集，不设固定出刊时刻。')} ${esc(brief.generated_at)}</p>` : brief.late_publication ? `<p class="hint">${copy('Actual generation time:','实际生成时间：')} ${esc(brief.generated_at)}</p>` : ''}
     <p class="stack-note">${copy('Numbers come from saved attribution. The language model uses retrieved titles and snippets; source and wording checks cannot establish causality or verify every interpretation. Publication dates have day precision.','数字取自已保存归因。语言模型阅读检索标题和摘要，来源与文字规则检查无法证明因果关系，也无法核实所有解释。新闻发布日期仅精确到日。')}</p>

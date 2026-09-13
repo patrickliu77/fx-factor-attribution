@@ -39,6 +39,9 @@ def isolated_outputs(tmp_path, monkeypatch):
     real set. Anything a module binds under the real outputs/ is remapped,
     including constants added after this fixture was written.
     """
+    # Unit tests must never invoke the workstation's real speech engine.
+    # Audio-specific tests inject a synthetic renderer or explicitly mock it.
+    monkeypatch.setenv("FXDASH_AUDIO", "off")
     fake_root = tmp_path / "outputs"
     fake_root.mkdir(exist_ok=True)
     for name, module in list(sys.modules.items()):

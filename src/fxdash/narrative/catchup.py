@@ -47,12 +47,16 @@ def packet_checks(packet, moment):
 
 
 def _publish(root, edition, repo, publisher, clock, kind):
+    from . import audio_briefing as audio
     public = A.read_edition(root / "edition.json", mode=kind)
     if public["state"] not in READY:
         raise M.FrozenEditionError("Saved briefing is unreadable; left unchanged.")
+    output_dir = root.parents[2]
+    audio.prepare_optional(output_dir, root / "edition.json", clock=clock)
     previous = M.read_json(root / "publish.json")
     if A.receipt(root, public)["state"] == "published":
-        return {"state": "already_available", "date": edition["date"], "kind": kind}
+        return {"state": "already_available", "date": edition["date"], "kind": kind,
+                "audio_state": audio.retry_publication(output_dir, public, repo, publisher, clock=clock)}
     attempts = previous.get("attempts", 0)
     attempts = attempts if type(attempts) is int and attempts >= 0 else 0
     result = {"state": "publishing", "date": edition["date"], "kind": kind,
@@ -66,6 +70,7 @@ def _publish(root, edition, repo, publisher, clock, kind):
     try:
         publisher(repo)
         result.update(state="published", finished_at=clock().isoformat())
+        audio.record_publication(output_dir, public, clock=clock)
     except Exception as exc:
         result.update(state="publish_failed", error=type(exc).__name__, finished_at=clock().isoformat())
     M.atomic_json(root / "publish.json", result)

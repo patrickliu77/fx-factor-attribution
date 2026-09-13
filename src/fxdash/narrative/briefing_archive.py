@@ -128,6 +128,11 @@ def dashboard(output_dir, data_version=None, *, clock=None):
     late_folders = day_folders(output_dir, "catchup")
     late_paths = [p / "edition.json" for p in late_folders if (p / "edition.json").exists()]
     catchups = [read_edition(p, mode="catchup") for p in late_paths[:HISTORY_LIMIT]]
+    # Read-only attachments, outside the frozen edition hash. No TTS on a GET.
+    from .audio_briefing import inspect as audio_inspect
+    for brief in history + catchups:
+        if brief.get("edition_hash") and brief["state"] in {"ready", "numbers_only"}:
+            brief["audio"] = audio_inspect(output_dir, brief)
     current = history[0] if history else {}
     if catchups and (not current or catchups[0]["date"] > current["date"]
                     or (catchups[0]["date"] == current["date"] and current["state"] not in {"ready", "numbers_only"})):

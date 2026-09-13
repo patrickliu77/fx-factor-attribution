@@ -101,14 +101,17 @@ export function briefingBoardHtml(current, archive, build, now=new Date()) {
   </section>`;
 }
 
+import { bindAudio } from './briefing-audio.js';
 let activeBoard;
 export function bindBriefingBoard(root,current,archive,build) {
   const panel=root.querySelector('.brief-board');
   if (!panel) { activeBoard=null; return; }
   activeBoard={panel,current,archive,build};
+  bindAudio(panel);
   panel.querySelector('[data-brief-history]')?.addEventListener('change',event=>{
     const selected=event.target.value==='current' ? current : [...(archive.history || []),...(archive.catchup_history || [])]
       .find(e=>(e.mode==='catchup' ? 'catchup:'+e.date : e.date)===event.target.value);
+    panel.querySelectorAll('audio').forEach(player=>player.pause());
     panel.querySelector('[data-brief-content]').innerHTML=briefingHtml(selected);
     // Status always describes the latest available edition, independently of
     // which historical text the reader selected.

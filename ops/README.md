@@ -304,7 +304,8 @@ five minutes until 10:00, using the same edition. Success means the Git push
 completed; GitHub Pages deployment can finish later. Evening publication can
 pick up an edition if the morning push failed. Logs go to `outputs/logs/briefing.log`.
 Existing pipeline and residual-narrative status files are untouched. This morning
-slot is optional under actual-use acceptance. No audio is generated.
+slot is optional under actual-use acceptance. Versioned audio attachments can now
+be generated separately; see [audio operations](../docs/AUDIO_BRIEFING_20260912.md).
 
 The News payload now includes the latest twenty frozen editions and the most
 recent preparation/edition/push observations. Public fields are explicitly

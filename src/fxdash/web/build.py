@@ -166,6 +166,7 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
     files: list[str] = []
     requests: dict[str, str] = {}
     briefing = None
+    media_files = []
     for request in request_set(meta):
         response = client.get(API_PREFIX + request)
         response.raise_for_status()
@@ -176,7 +177,28 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
         files.append(rel)
         requests[request] = rel
         if request == "/news":
-            current = response.json().get("briefing") or {}
+            payload = response.json()
+            current = payload.get("briefing") or {}
+            archive = payload.get("briefing_archive") or {}
+            editions = [current] + archive.get("history", []) + archive.get("catchup_history", [])
+            for edition in editions:
+                for item in (edition.get("audio") or {}).get("languages", {}).values():
+                    if item.get("state") != "ready" or item["url"] in media_files:
+                        continue
+                    # Fetch the same verified allowlisted endpoint as the browser.
+                    # No copying of arbitrary manifest paths or the outputs tree.
+                    rel_media = item["url"]
+                    media = client.get("/" + rel_media)
+                    media.raise_for_status()
+                    import hashlib
+                    if hashlib.sha256(media.content).hexdigest() != item["audio_sha256"]:
+                        raise ValueError("audio_changed_during_build")
+                    target_media = out / rel_media
+                    if not target_media.resolve().is_relative_to(out):
+                        raise ValueError("audio_path_outside_build")
+                    target_media.parent.mkdir(parents=True, exist_ok=True)
+                    target_media.write_bytes(media.content)
+                    media_files.append(rel_media)
             if current.get("mode") in {"edition", "catchup"} and current.get("edition_hash"):
                 briefing = {"date": current["date"], "edition_hash": current["edition_hash"]}
                 if current["mode"] == "catchup":
@@ -193,6 +215,7 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
         "files": sorted(files),
         "requests": requests,
         "briefing": briefing,
+        "media_files": sorted(media_files),
     }
     (out / "build.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest

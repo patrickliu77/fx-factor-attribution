@@ -13,7 +13,8 @@ deadline or consecutive-day quota for acceptance. The existing 09:00 New York sl
 is optional. Attribution dates, news retrieval times and publication status are
 labelled separately. The analysis covers completed trading days.
 
-The [September 12 release](docs/RELEASE_20260912.md) records the latest changes and checks.
+The [audio briefing release](docs/AUDIO_BRIEFING_20260912.md) adds saved bilingual recordings.
+The [September 12 acceptance release](docs/RELEASE_20260912.md) records the delivery checks.
 The [actual-use acceptance policy](docs/USAGE_ACCEPTANCE_20260910.md) describes the
 current delivery checks. The [September 8 release notes](docs/RELEASE_20260908.md) record the earlier scope,
 verification and remaining operational work. Production model choices are unchanged;
@@ -224,7 +225,22 @@ The earlier on-time reports remain archived as optional timetable diagnostics.
 Free-form AI outlooks are
 withheld: validation samples inferred policy effects unsupported by the retrieved
 titles. Richer event evidence and semantic evaluation are needed before that
-section can run automatically. Audio and multi-agent delivery remain future work.
+section can run automatically. Independent multi-agent orchestration remains future work.
+
+### Audio briefings
+
+The News page can play a saved English or Chinese MP3, with a transcript, edition
+date, recording time and measured duration. Playback starts only when requested.
+Morning and catch-up tasks prepare the recordings from frozen figures and checked
+news notes. The audio introduces the largest three moves, their leading factor
+contributions and residuals, then lists research checks. It has no economic-calendar
+feed and does not invent a schedule of today's releases.
+
+Speech uses installed Windows voices and FFmpeg, with no additional model call or
+paid API. Recordings target one to three minutes. Files have separate identity and
+publication records; audio failure leaves the text briefing available. A later
+recording of an older edition shows its actual generation time. See the
+[audio setup and limits](docs/AUDIO_BRIEFING_20260912.md).
 
 The News page separates preparation, edition and delivery records. Its archive
 selector shows the latest twenty saved editions without filling missing dates.

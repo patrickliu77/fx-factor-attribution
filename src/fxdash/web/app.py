@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import (
@@ -61,6 +61,16 @@ def create_app(output_dir: Path | None = None,
                       cache_dir=Path(cache_dir) if cache_dir else None)
     app = FastAPI(title="FX Dashboard", docs_url="/api/docs")
     app.state.store = store
+
+    @app.get("/media/briefing/{mode}/{day}/{edition_hash}/{version}/{lang}.mp3")
+    def briefing_audio(mode: str, day: str, edition_hash: str, version: str, lang: str):
+        from ..narrative.audio_briefing import resolve_asset
+        try:
+            path = resolve_asset(store.output_dir, mode, day, edition_hash, version, lang)
+        except (ValueError, KeyError, TypeError, OSError):
+            raise HTTPException(404, detail="Audio attachment unavailable")
+        return FileResponse(path, media_type="audio/mpeg",
+                            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"})
 
     api = APIRouter(prefix="/api")
 

@@ -28,6 +28,7 @@ def publish_site(repo: Path):
 
 def _dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
              prepare_fn=M.prepare, finalize_fn=M.finalize, publisher=publish_site):
+    from . import audio_briefing as audio, briefing_archive as archive
     moment = clock()
     action = M.slot(moment)
     if action == "idle":
@@ -51,12 +52,16 @@ def _dispatch(output_dir: Path, repo: Path, *, clock=M.now_utc,
                           "attempts": attempts+1}
                 M.atomic_json(receipt, result)
                 return result
+            audio.prepare_optional(output_dir, root / "edition.json", clock=clock)
+            public = archive.read_edition(root / "edition.json")
             if previous.get("state") == "published" and previous.get("edition_hash") == M.digest(edition):
-                return {"state": "already_published", "date": day}
+                return {"state": "already_published", "date": day,
+                        "audio_state": audio.retry_publication(output_dir, public, repo, publisher, clock=clock)}
             M.atomic_json(receipt, {"state": "publishing", "date": day, "started_at": started_at,
                                     "attempts": attempts+1})
             try:
                 publisher(repo)
+                audio.record_publication(output_dir, public, clock=clock)
                 result = {"state": "published", "date": day,
                           "edition_state": edition["state"],
                           "edition_hash": M.digest(edition),

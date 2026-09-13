@@ -1333,6 +1333,7 @@ async function pageMethodology(view) {
 /* ------------------------------------------------------------------ router */
 async function render() {
   const view = document.getElementById("view");
+  view.querySelectorAll('audio').forEach(player=>player.pause());
   const route = (location.hash || "#/fx").slice(1);
   disposeCharts();
   renderNav(route);
