@@ -96,7 +96,7 @@ def test_operator_consent_and_activation_are_required(tmp_path,field):
     assert S.public_config(tmp_path)=={'enabled':False}
 
 
-def test_bilingual_campaigns_submit_once_and_use_public_audio(tmp_path):
+def test_bilingual_campaigns_submit_once_and_use_public_audio(tmp_path, monkeypatch):
     brief,verified=setup(tmp_path)
     calls=[]
     class Provider:
@@ -104,15 +104,50 @@ def test_bilingual_campaigns_submit_once_and_use_public_audio(tmp_path):
             calls.append(value)
             assert 'to' not in value and '{{ unsubscribe }}' in value['htmlContent']
             assert P.SITE+'media/briefing/' in value['htmlContent']
+            assert '(provisional)' not in value['htmlContent'] and '（待确认）' not in value['htmlContent']
             return len(calls)
         def send(self,identity): pass
     result=S.deliver(tmp_path,brief,verified,clock=lambda:moment(17,2),provider_factory=Provider)
     assert result['state']=='submitted' and len(calls)==2
     assert {c['recipients']['listIds'][0] for c in calls}=={10,11}
+    monkeypatch.setattr(S, 'email_text', lambda *a: pytest.fail('A copy change must not resend this edition'))
     S.deliver(tmp_path,brief,verified,clock=lambda:moment(17,3),provider_factory=Provider)
     assert len(calls)==2
     serialized=''.join(p.read_text() for p in (tmp_path/'subscriptions/deliveries').rglob('*.json'))
     assert 'Example sender' not in serialized and 'listIds' not in serialized
+
+
+@pytest.mark.parametrize('lang', ['en', 'zh'])
+@pytest.mark.parametrize('pair', ['AUD', 'CAD', 'EUR', 'JPY', 'MXN', 'NOK'])
+def test_email_omits_only_numeric_status_labels(lang, pair):
+    label = ' (provisional)' if lang == 'en' else '（待确认）'
+    tail = '; residual -7.9 bp.' if lang == 'en' else '，残差 -7.9 bp。'
+    news = ' Source: provisional GDP estimate <news>.' if lang == 'en' else '来源：待确认的经济数据 <news>。'
+    # Signs and numeric values are preserved, including a displayed negative zero.
+    for change in ('+55.8', '-12.3', '-0.0'):
+        lead = f'USD/{pair} {change} bp'
+        brief = {'text': {lang: lead + label + tail + news}}
+        original = copy.deepcopy(brief)
+        assert S.email_text(brief, lang) == lead + tail + news
+        assert brief == original
+
+
+@pytest.mark.parametrize('lang', ['en', 'zh'])
+def test_email_view_keeps_frozen_website_text_and_data_status(tmp_path, lang):
+    brief, _ = setup(tmp_path)
+    original = copy.deepcopy(brief)
+    label = '(provisional)' if lang == 'en' else '（待确认）'
+    assert label in brief['text'][lang]
+    audio = brief['audio']['languages'][lang]
+    rendered = S.payload(S.config(tmp_path), brief, audio, lang)['htmlContent']
+    assert label not in rendered
+    assert brief == original
+    assert P.SITE + audio['url'] in rendered
+    assert '{{ unsubscribe }}' in rendered
+    # The formatter runs before escaping and does not turn news copy into HTML.
+    brief['text'][lang] += '<script>unsafe</script>'
+    rendered = S.payload(S.config(tmp_path), brief, audio, lang)['htmlContent']
+    assert '&lt;script&gt;unsafe&lt;/script&gt;' in rendered and '<script>' not in rendered
 
 
 @pytest.mark.parametrize('phase',['create','send'])

@@ -267,6 +267,8 @@ and recordings are preserved when a new audio version is added.
 New recordings use a faster pace, about 1.4 times the earlier neural version.
 The synthetic-voice label stays beside the player and is omitted from the spoken
 introduction. Existing email links retain their original recordings.
+Email summaries and new recordings omit the per-pair provisional label. Data-status
+flags remain in the archived evidence and on the dashboard.
 
 ### Email subscriptions
 

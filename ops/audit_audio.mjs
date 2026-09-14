@@ -29,10 +29,13 @@ try {
       assert.ok((await player.getAttribute('src')).includes('/'+process.env.FXDASH_EXPECT_AUDIO_VERSION+'/'));
     }
     assert.equal(await player.evaluate(a=>a.playbackRate),1,'The faster pace is in the MP3, not applied twice');
-    if ((await player.getAttribute('src')).includes('/audio-v3/')) {
+    if (/\/audio-v[34]\//.test(await player.getAttribute('src'))) {
       const transcript=await panel.locator('.brief-audio-script').textContent();
       assert.ok(!/read by a synthetic voice|采用合成语音/.test(transcript));
       assert.ok((await panel.locator('.brief-audio-heading').textContent()).includes(lang==='en'?'Synthetic voice':'合成语音'));
+      if ((await player.getAttribute('src')).includes('/audio-v4/')) {
+        assert.ok(!/These figures are provisional\.|这组数字仍待确认/.test(transcript));
+      }
     }
     await player.evaluate(async a=>{window.__auditAudio=a;a.muted=true;await a.play();});
     await page.waitForFunction(()=>window.__auditAudio.currentTime>0.2);

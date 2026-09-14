@@ -87,7 +87,7 @@ def test_saved_observation_is_read_only_and_keeps_its_real_date(tmp_path):
     assert observed['observed_at']==moment(17,1).isoformat() and observed['state']=='verified'
 
 
-@pytest.mark.parametrize('version', ['audio-v1', 'audio-v2', 'audio-v3'])
+@pytest.mark.parametrize('version', ['audio-v1', 'audio-v2', 'audio-v3', 'audio-v4'])
 @pytest.mark.parametrize('lang', ['en', 'zh'])
 def test_public_fetch_accepts_all_saved_audio_versions(monkeypatch, version, lang):
     import requests
@@ -106,7 +106,7 @@ def test_public_fetch_accepts_all_saved_audio_versions(monkeypatch, version, lan
 
 @pytest.mark.parametrize('relative', [
     'https://evil.test/en.mp3',
-    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v4/en.mp3',
+    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v5/en.mp3',
     f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v3/en.mp3?x=1',
     f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v3/../en.mp3',
 ])

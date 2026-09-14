@@ -7,7 +7,7 @@ from datetime import date, datetime
 from . import morning as M, briefing_archive as A
 
 VERSION = "audio-v1"
-NEURAL_VERSIONS = ("audio-v2", "audio-v3")
+NEURAL_VERSIONS = ("audio-v2", "audio-v3", "audio-v4")
 NEURAL_VERSION = NEURAL_VERSIONS[-1]
 VERSIONS = (VERSION, *NEURAL_VERSIONS)
 PAIRS = {
@@ -99,7 +99,7 @@ def compose(edition, packet, lang, *, version=VERSION):
              "We start with the three largest moves among six pairs. Figures are in log return basis points. "
              "Positive means a stronger dollar; one hundred basis points is roughly a one percent price change.")
         ]
-        if version == "audio-v3":
+        if version in {"audio-v3", "audio-v4"}:
             # Disclosure remains next to the player. Keep old transcripts intact.
             lines[0] = lines[0].replace("，采用合成语音", "").replace(
                 ", read by a synthetic voice", "")
@@ -108,7 +108,7 @@ def compose(edition, packet, lang, *, version=VERSION):
         leading = r.get("leading", [])
         line = (f"美元兑{currency}，单日收益为{signed_bp(r['y']*1e4, lang)}。"
                 if zh else f"Against {currency}, the dollar's daily return was {signed_bp(r['y']*1e4, lang)}. ")
-        if r.get("provisional"):
+        if r.get("provisional") and version != "audio-v4":
             line += "这组数字仍待确认。" if zh else "These figures are provisional. "
         if leading:
             f = max(leading, key=lambda f: abs(f["contribution_bp"]))

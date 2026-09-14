@@ -72,6 +72,11 @@ exported in the website API; only explicitly enabled form URLs are public.
 
 ## First real acceptance
 
+The email view omits per-pair `(provisional)` and `（待确认）` labels from the
+saved numeric summary. It retains all figures, signs and news text. The frozen
+edition, source data flags and dashboard labels are unchanged. A copy update does
+not resend a date that already has a campaign submission record.
+
 Complete account setup before this check. Use only the owner's confirmed test
 subscriptions first. Check that both languages arrive, audio opens, dates match,
 unsubscribe works and a repeated task invocation causes no second campaign. The

@@ -177,19 +177,19 @@ def neural_renderer(text, target, lang):
     return {**renderer(text, target, lang), 'engine': 'azure-neural-speech', 'voice': Z.VOICES[lang][1]}
 
 
-def legacy_neural(root, path):
-    """Previously frozen v2 attachments, independently of the current renderer."""
+def legacy_neural(root, path, *, version='audio-v2'):
+    """Frozen legacy neural attachments, independent of the current renderer."""
     current = brief(path)
-    folder = B.sidecar(root, current, 'audio-v2')
+    folder = B.sidecar(root, current, version)
     folder.mkdir(parents=True)
     edition = M.read_json(path)
     packet = M.read_json(path.parent / 'packet.json')
     for lang in ('en', 'zh'):
         script, media = folder / (lang + '.txt'), folder / (lang + '.mp3')
-        script.write_text(S.compose(edition, packet, lang, version='audio-v2'), encoding='utf-8')
+        script.write_text(S.compose(edition, packet, lang, version=version), encoding='utf-8')
         info = neural_renderer(script, media, lang)
         M.atomic_json(folder / (lang + '.json'), dict(B.identity(current), **info,
-            script_version='audio-v2', language=lang, state='ready',
+            script_version=version, language=lang, state='ready',
             generated_at=moment(17, 0).isoformat(),
             audio_sha256=B.file_hash(media), script_sha256=B.file_hash(script)))
     return folder
@@ -206,11 +206,26 @@ def test_v3_omits_spoken_disclosure_and_preserves_v2_body(tmp_path, lang):
     assert new == old.replace(disclosure, '')
 
 
-def test_legacy_neural_is_playable_when_no_new_recording_exists(tmp_path):
+@pytest.mark.parametrize('version', ['audio-v2', 'audio-v3'])
+def test_legacy_neural_is_playable_when_no_new_recording_exists(tmp_path, version):
     path, _, _ = saved(tmp_path)
-    legacy_neural(tmp_path, path)
+    legacy_neural(tmp_path, path, version=version)
     result = B.inspect(tmp_path, brief(path))
-    assert result['state'] == 'ready' and result['script_version'] == 'audio-v2'
+    assert result['state'] == 'ready' and result['script_version'] == version
+
+
+@pytest.mark.parametrize('lang', ['en', 'zh'])
+def test_v4_omits_spoken_status_without_changing_numbers_or_evidence(tmp_path, lang):
+    path, edition, packet = saved(tmp_path)
+    original = {p: p.read_bytes() for p in (path, path.parent/'packet.json')}
+    old = S.compose(edition, packet, lang, version='audio-v3')
+    new = S.compose(edition, packet, lang, version='audio-v4')
+    label = 'These figures are provisional. ' if lang == 'en' else '这组数字仍待确认。'
+    assert label in old and label not in new
+    assert new == old.replace(label, '')
+    assert ('read by a synthetic voice' if lang == 'en' else '采用合成语音') not in new
+    assert packet['pairs'][0]['provisional'] is True
+    assert all(p.read_bytes() == value for p, value in original.items())
 
 
 def test_opt_in_creates_new_version_without_replacing_legacy_or_frozen_text(tmp_path, monkeypatch):
@@ -218,9 +233,10 @@ def test_opt_in_creates_new_version_without_replacing_legacy_or_frozen_text(tmp_
     prepare(tmp_path, path)
     old_root = B.sidecar(tmp_path, brief(path))
     original = {p: p.read_bytes() for p in old_root.rglob('*') if p.is_file()}
-    v2_root = legacy_neural(tmp_path, path)
-    B.record_publication(tmp_path, brief(path), clock=lambda: moment(17, 0))
-    original.update({p: p.read_bytes() for p in v2_root.rglob('*') if p.is_file()})
+    for version in ('audio-v2', 'audio-v3'):
+        legacy_root = legacy_neural(tmp_path, path, version=version)
+        B.record_publication(tmp_path, brief(path), clock=lambda: moment(17, 0))
+        original.update({p: p.read_bytes() for p in legacy_root.rglob('*') if p.is_file()})
     original[path] = path.read_bytes()
     original[path.parent/'packet.json'] = (path.parent/'packet.json').read_bytes()
     monkeypatch.setenv('FXDASH_AUDIO', 'azure')
@@ -235,7 +251,7 @@ def test_opt_in_creates_new_version_without_replacing_legacy_or_frozen_text(tmp_
         concise = S.compose(edition, packet, lang, version=S.NEURAL_VERSION)
         assert len(concise) < len(S.compose(edition, packet, lang))
         assert ('minus 200.0 basis points' if lang == 'en' else '负200.0个基点') in concise
-        assert ('provisional' if lang == 'en' else '待确认') in concise
+        assert ('provisional' if lang == 'en' else '待确认') not in concise
         assert ('log return' if lang == 'en' else '对数收益') in concise
         assert ('no economic calendar' if lang == 'en' else '未接入经济日历') in concise
 
