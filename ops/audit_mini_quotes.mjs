@@ -99,7 +99,8 @@ try {
         if (kind === 'flat_short_mixed_dates') {
           assert.equal(card.values.length, 2); assert.equal(card.latestColor, card.neutral);
           assert.equal(card.dateVisible, true); assert.equal(card.dateText, '2026-09-04');
-          assert.ok(state.asof.includes('vary'));
+          assert.equal(state.asof,'');
+          assert.equal(await page.locator('[data-mini-asof]').isVisible(),false);
         } else if (kind === 'unavailable') {
           assert.equal(card.values.length, 0); assert.ok(card.basis.includes('unavailable'));
           assert.ok(card.quoteDate && card.price !== 'n/a');

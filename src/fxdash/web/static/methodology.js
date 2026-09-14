@@ -19,7 +19,7 @@ function en() {
 <header class="method__intro">
   <p class="method__eyebrow">Research notes / Methodology</p>
   <h1>Reading a daily FX move</h1>
-  <p class="lede">The dashboard splits a currency's daily return into contributions from a fixed set of factors and a residual. This page follows the calculation from market closes to the numbers in the Attribution view.</p>
+  <p class="lede">The dashboard splits a currency's daily return into factor contributions and a residual. This page follows the calculation from market observations to attribution, news context and the daily briefing.</p>
   <p class="method__meta">Six USD pairs <span>Daily log returns</span><span>Default: OLS, 126 days</span></p>
   <p class="method__meta">Calculation revision: 2026-09-04.fold-local-cv-pca</p>
 </header>
@@ -105,14 +105,30 @@ ${figure('lasso','en','03','The retained variables here are illustrative. The se
 <p>The residual belongs to the currency and trading day. News links provide context for that observation. A story's individual contribution remains unmeasured.</p>
 <p>The daily headline feed is available independently of narrative triggers. The local service caches it for 30 minutes. The public site captures it when the page is built and displays the fetch time.</p>
 <p>A separate panel starts from the two largest factor contributions and retrieves factor-related reporting alongside a currency-context search. It retains exclusion reasons for explicit quote pages and unrelated institutional-name matches. These links are reading leads, with no new causal judgment. News publication dates have day precision; observation timestamps record the actual retrieval time.</p>
-<p>The weekday text edition starts collecting at 08:50 America/New_York and freezes its input packet before 09:00. A separate model call can add source-linked event context for up to three large currency moves. Numbers, leave-one-out definitions and an evidence-checking plan are printed by code. The model reads RSS titles and snippets; its interpretation still needs scrutiny. Free-form AI outlooks remain withheld after validation exposed unsupported policy inferences.</p>
-<p>At 09:00 the job publishes from the saved packet. Missing or late inputs receive a dated notice; rejected commentary leaves a numeric summary. Publication retries reuse the frozen edition. Source ids, exact excerpts, dates, bilingual citations and wording are checked, with failed drafts retained. These checks do not prove causality or verify every paraphrase. Validation previews are labelled separately. The host must be running, and the first natural morning execution remains to be observed.</p>
-<p>A separate catch-up task covers late logins. After 09:05 New York time on weekdays, it waits for current saved attribution and usable news access, then can generate one dated catch-up briefing. It records actual collection and generation times. The original morning archive stays unchanged, and catch-up text cannot pass the on-time morning test. A persistent generation claim prevents repeated model calls after interruption; publication retries use the saved text. The task checks two minutes after login and every fifteen minutes while the computer is available, without waking it.</p>
-<p>The News archive retains the latest twenty editions for reading. Preparation, saved text and delivery are shown separately. The browser checks dates against its current New York clock, and a static build identifies the edition it contains. An unreadable archive remains labelled; earlier text is available by date. These observations cannot confirm that the host is still running or reveal a failed push after the last build.</p>
+<p>Matching links and similar headlines are grouped to reduce repeat coverage. A flagged currency day shares one model explanation across its stories. The News page initially shows four headlines, with more reporting and screening details available on demand. Grouping can miss paraphrased duplicates; several publisher names do not establish independent confirmation.</p>
 </section>
 
 <section class="method__section">
-<h2><span>07</span> Sources and data revisions</h2>
+<h2><span>07</span> From saved evidence to a briefing</h2>
+<p>A dated briefing combines saved attribution with the reporting available when its input packet was collected. Code prints the figures and factor definitions. Gemini can add source-linked context for up to three large currency moves. The notes are checked before publication; rejected commentary leaves a numeric summary. Free-form AI forecasts remain withheld.</p>
+${figure('delivery','en','04','One saved edition supplies the text, recording and email. A public-file check comes before campaign submission; inbox receipt is a separate check.')}
+<p>The morning task starts preparing at 08:50 America/New_York and targets publication at 09:00 on weekdays. A separate catch-up task checks after late login and can prepare that day's edition after 09:05. Both need the computer awake, signed in and online. Catch-up evidence keeps its actual observation time and its own label. GitHub Pages serves the saved snapshot while the computer is off.</p>
+<p>The News page plays saved English and Chinese recordings on request. Code builds the transcript from the edition's figures and checked notes, without another language-model call. Azure neural speech reads the deployed recordings. Full audio must measure one to three minutes. Text remains available if speech generation fails.</p>
+<details class="method__detail"><summary>Inputs, publication checks and retries</summary>
+<p>The scheduled entries first check saved dates for all six pairs. If inputs are missing or old, they can request the existing live task with a bounded retry budget. An eligible saved packet or edition is reused. Generation claims prevent repeated model calls after interruption; a publication retry uses the same text and input hashes.</p>
+<p>New packets also retain the official BLS and BEA release schedules as observed. Times are shown in New York time. Coverage is limited to these US sources and includes no consensus forecasts or released figures. Missing sources remain labelled. An empty snapshot cannot establish that no releases are scheduled. Old editions are not rewritten when a later calendar arrives.</p>
+<p>Recordings have their own version, hash, transcript and generation time. Azure requires separate operator credentials and quota; installed Windows voices remain a local option. Failed Azure requests never silently fall back to Windows speech. A successful file is reused. Failed synthesis permits at most two attempts per language, edition and audio version, with a fifteen-minute cooldown.</p>
+<p>A Git push starts deployment. A later check compares the actual public edition, text, calendar context and both MP3 hashes with the saved version. The News archive exposes the latest twenty saved editions and keeps sources and run details in expandable sections. These observations describe what was checked at that time; they cannot prove that the host is still running.</p>
+</details>
+<details class="method__detail"><summary>Email subscriptions and delivery limits</summary>
+<p>The subscription button opens a Brevo-hosted form in the selected language. A reader joins its list only after confirming by email. Brevo stores subscriber addresses and provides unsubscribe links. Keys, addresses and private sender settings are excluded from the public site and repository.</p>
+<p>The local task submits saved briefing text and an audio link after the public-file check passes. A persistent claim limits submission to one campaign per language and New York date. An ambiguous provider response needs manual review before another send. Past missed days are not sent as a backlog.</p>
+<p>The target is 09:00 New York time, with same-day catch-up after late login. Generation, deployment and mail queues can delay arrival. A provider's accepted or delivered status alone cannot confirm inbox receipt. Delivery acceptance checks actual saved evidence without requiring a fixed-hour arrival or a consecutive-day streak. Inbox arrival, playable audio and unsubscribe each need their own real-world check.</p>
+</details>
+</section>
+
+<section class="method__section">
+<h2><span>08</span> Sources and data revisions</h2>
 <p>Prices and ETF series come from Yahoo Finance. FRED supplies US yields, VIX and credit spreads. Foreign yield series use the official sources below.</p>
 ${sources('en')}
 <p>Acquisition tries the online source, the last successful cache, then a supplied local file. Fallbacks and missing observations are logged. Alignment is fixed by pair; joining and differencing take place on that pair's date index. The history begins in January 2010, with the first attribution appearing after the selected training window.</p>
@@ -141,7 +157,7 @@ function zh() {
 <header class="method__intro">
   <p class="method__eyebrow">研究说明 / Methodology</p>
   <h1>一天的汇率变动，如何分解</h1>
-  <p class="lede">仪表盘将每日汇率收益拆成各因子贡献与残差。这一页从数据开始，依次说明系数如何估计、贡献如何计算，以及归因页上的数字该怎样读。</p>
+  <p class="lede">仪表盘将每日汇率收益拆成各因子贡献与残差。这一页从市场数据开始，说明归因如何计算、新闻如何提供背景，以及每日简报怎样生成与发送。</p>
   <p class="method__meta">六组美元汇率 <span>日对数收益</span><span>默认：OLS，126 日</span></p>
   <p class="method__meta">计算版本：2026-09-04.fold-local-cv-pca</p>
 </header>
@@ -227,14 +243,30 @@ ${figure('lasso','zh','03','图中的保留变量仅作示意。变量选择与�
 <p>残差属于某个货币对的某个交易日。新闻链接提供这一观测的背景，单篇报道对应的贡献没有可用测量。</p>
 <p>每日头条独立于短评触发器。本地服务缓存 30 分钟，公开站在构建时抓取快照，页面标明抓取时间。</p>
 <p>另一个面板从贡献绝对值最大的两个因子出发，分别检索因子报道与货币背景。报价页面、机构同名造成的无关投资报道会留下排除原因。链接提供阅读线索，尚未加入新的因果判断。新闻发布日期仅精确到日，抓取时间记录程序实际看到报道的时刻。</p>
-<p>工作日文字晨报按 America/New_York 时区运行，08:50 开始采集，在 09:00 前保存输入。独立的模型调用为最多三个大幅波动货币对补充有来源的事件背景。数字、留一法因子定义与核验路径由代码展示。模型阅读 RSS 标题和摘要，解释内容仍需审慎核对。样本验收发现模型会推演缺乏证据的政策影响，自由生成的前瞻段落暂不发布。</p>
-<p>09:00 使用已保存输入发布。缺少输入或输入迟到时展示带日期的说明；解读未通过检查时保留数字摘要。重试发布沿用冻结稿件。来源编号、原文短摘录、时间、双语引用及措辞均有检查，失败稿件保留归档。这些检查无法证明因果关系，也无法核实每一句转述。验收预览单独标注。运行依赖主机在线，首次自然触发仍待观察。</p>
-<p>晚登录由独立补发任务处理。美东工作日 09:05 后，等到最新已保存归因与新闻源可用，再生成当天的一份补发简报，记录实际采集和生成时间。原晨报档案保持不变，补发不计作晨间按时验收通过。生成前持久保存调用声明，中断后不会重复调用模型，发布失败则沿用已保存正文重试。任务在登录两分钟后检查，机器可用时每十五分钟复查，不主动唤醒电脑。</p>
-<p>News 页可查阅最近二十期晨报。准备、稿件与交付记录分开展示，浏览器按当前美东时间检查日期，静态构建标识其中包含的稿件版本。档案不可读时保留提示，较早稿件可按日期选择。这些记录无法确认主机仍在运行，也看不到最后一次构建之后发生的推送失败。</p>
+<p>相同链接与相近标题会被归组，减少重复报道。同一货币对、同一异常日的新闻共享一份模型解读。News 页默认展示四条头条，其余报道与筛选细节按需展开。改写后的重复报道仍可能漏过筛选，多家媒体名称也无法单独证明来源相互独立。</p>
 </section>
 
 <section class="method__section">
-<h2><span>07</span> 数据来源与修订</h2>
+<h2><span>07</span> 从保存的证据到每日简报</h2>
+<p>每期简报使用已保存归因，以及采集输入时实际看到的报道。数字与因子定义由代码生成，Gemini 为最多三个大幅波动货币对补充带来源的背景。短评通过检查后才发布，未通过时仍可保留数字摘要。自由生成的 AI 预测暂不发布。</p>
+${figure('delivery','zh','04','文字、录音与邮件使用同一期保存稿。发送邮件前先核对公开文件，收件箱到账还需要单独检查。')}
+<p>晨报任务在美东工作日 08:50 开始准备，目标为 09:00 发布。晚登录时，独立补发任务会检查输入，并可在 09:05 后生成当天简报。两条流程都要求电脑开机、用户已登录且网络可用。补发保留实际采集时间和专用标签。电脑关机时，GitHub Pages 继续展示此前发布的快照。</p>
+<p>News 页提供已保存的中英文录音，点击后播放。代码用当期数字和已检查短评组成口播稿，不再调用语言模型。当前公开录音采用 Azure 神经语音，完整录音须在一至三分钟内。语音生成失败时，文字仍可阅读。</p>
+<details class="method__detail"><summary>输入、发布核对与重试</summary>
+<p>调度入口先检查六个货币对的归因日期。输入缺失或过旧时，可以在限定重试次数内请求现有 live 任务。已有合格输入包或稿件时优先复用。持久保存的生成声明防止中断后重复调用模型，发布重试沿用原正文与输入哈希。</p>
+<p>新输入包还保存实际读取到的 BLS 与 BEA 官方发布日历，时间统一显示为美东时间。日历只覆盖这两个美国来源，不含市场预期或实际发布值。来源缺失会注明，空快照不能说明当天没有发布安排。后来的日历不会被写回旧稿。</p>
+<p>录音分别保存版本、哈希、口播稿和生成时间。Azure 需要运营者单独配置凭据与额度，Windows 本地语音仍可选择。Azure 请求失败后不会自动换成 Windows 声音。成功文件直接复用，失败录音按语言、稿件和语音版本最多尝试两次，间隔至少十五分钟。</p>
+<p>Git 推送触发部署，之后另行核对实际公开的稿件、文字、日历背景与两种语言的 MP3 哈希。News 档案提供最近二十期已保存简报，来源与运行细节按需展开。这些记录说明当时检查到了什么，无法证明主机此刻仍在运行。</p>
+</details>
+<details class="method__detail"><summary>邮箱订阅与送达限制</summary>
+<p>订阅按钮打开当前语言的 Brevo 托管表单，读者点击确认邮件后才加入相应名单。Brevo 保存邮箱地址并提供退订链接，公开网站与仓库不包含密钥、订阅者地址或私有发件设置。</p>
+<p>公开文件核对通过后，本地任务提交已保存简报的文字与语音链接。持久记录将同一美东日期、同一语言限制为一份发送活动。服务商响应不明确时，需要人工核查后再决定是否发送。过去错过的日期不会积攒成一批旧邮件。</p>
+<p>目标发送时间为美东 09:00，晚登录可以补发当天简报。生成、部署和邮件队列都会带来延迟。服务商显示接受或投递成功，仍不能代替收件箱验收。交付验收检查实际保存的证据，不要求固定时刻到账或连续多天达标。实际收信、音频播放和退订分别需要验证。</p>
+</details>
+</section>
+
+<section class="method__section">
+<h2><span>08</span> 数据来源与修订</h2>
 <p>汇率、商品和 ETF 序列来自 Yahoo Finance，美国收益率、VIX 与信用利差来自 FRED。外国收益率使用以下官方来源。</p>
 ${sources('zh')}
 <p>取数依次尝试线上源、上次成功缓存和用户提供的本地文件，回退与缺失记录进入日志。对齐偏移按货币对冻结，拼接与差分在各自日期索引上完成。原始历史从 2010 年 1 月开始，首条归因还需积累相应长度的训练窗口。</p>

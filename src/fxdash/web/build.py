@@ -181,8 +181,13 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
             current = payload.get("briefing") or {}
             archive = payload.get("briefing_archive") or {}
             editions = [current] + archive.get("history", []) + archive.get("catchup_history", [])
+            from ..narrative import audio_briefing, audio_script
             for edition in editions:
-                for item in (edition.get("audio") or {}).get("languages", {}).values():
+                # Retain verified older voice versions for the editions in this
+                # export, even when the page now selects the neural recording.
+                attachments = [item for version in audio_script.VERSIONS for item in
+                    audio_briefing.inspect(app.state.store.output_dir, edition, version=version)["languages"].values()]
+                for item in attachments:
                     if item.get("state") != "ready" or item["url"] in media_files:
                         continue
                     # Fetch the same verified allowlisted endpoint as the browser.

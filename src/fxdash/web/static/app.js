@@ -15,6 +15,7 @@ import { driversHtml } from "./context.js";
 import { briefingBoardHtml, bindBriefingBoard, refreshBriefingStatus } from "./briefing-board.js";
 import { distinctSummary, pairNewsDaysHtml, bindPairNewsDays } from "./pair-news.js";
 import {runtimeHtml, runtimeState} from './runtime-status.js';
+import {subscriptionHtml, bindSubscription, calendarHtml} from './briefing-extras.js';
 
 /* global echarts */
 
@@ -480,15 +481,11 @@ function storyRowHtml(s, key, ordinal) {
   const lat = s.latest || {};
   return `<div class="story">
     <button class="storyrow" type="button" data-story="${esc(key)}" aria-expanded="${open}">
-      <div class="rank">${ordinal}</div>
       <div class="body">
         <div class="title">${esc(s.title)}</div>
+        <div class="storymeta"><div class="pairtags">${tags}</div><time>${esc(lat.date || '')}</time></div>
       </div>
-      <div class="pairtags">${tags}</div>
-      <div class="share">
-        <div class="mono nowrap">${esc(lat.date || "")}</div>
-        ${s.cited ? `<div class="citedtag">${esc(t("news.cited"))}</div>` : ""}
-      </div>
+      <span class="news-row-toggle" aria-hidden="true">+</span>
     </button>
     ${open ? storyExpandHtml(s, key) : ""}
   </div>`;
@@ -521,7 +518,7 @@ function flaggedGroupsHtml(stories) {
 
 function headlineExpandHtml(h, key) {
   const summary = distinctSummary(h);
-  return `<div class="expand" style="padding-left:112px">
+  return `<div class="expand">
     <div class="expand__top">
       <div class="expand__text">
         ${metaLine(h, h.direction)}
@@ -606,15 +603,15 @@ async function pageNews(view) {
   // rather than calling them live (2026-09-04 ruling, honest downgrade)
   const isFetched = news.today.mode === "fetched";
   const fetchedAt = news.today.fetched_at ? stampLabel(news.today.fetched_at) : "";
-  const headlineRow = (h, key) => {
+  const headlineRow = (h, key, groupDate=null) => {
     const open = state.openHeadline === key;
     const chips = (h.pairs || []).map((p) =>
       `<span class="ptag">${esc(label(p))}</span>`).join("");
     return `<div class="hline">
       <button class="hrow" type="button" data-headline="${esc(key)}" aria-expanded="${open}">
-        <div class="when">${esc(h.published || "")}</div>
-        <div class="t">${esc(h.title)}${chips ? ` <span class="hchips">${chips}</span>` : ""}</div>
-        <div class="src">${esc(h.source || "")}</div>
+        <div class="hcontent"><div class="t">${esc(h.title)}</div>
+          <div class="hmeta"><span class="src">${esc(h.source || '')}</span>${h.published && h.published!==groupDate ? `<time class="when">${esc(h.published)}</time>` : ''}${chips ? `<span class="hchips">${chips}</span>` : ''}</div></div>
+        <span class="news-row-toggle" aria-hidden="true">+</span>
       </button>
       ${open ? headlineExpandHtml(h, key) : ""}
     </div>`;
@@ -624,7 +621,7 @@ async function pageNews(view) {
   const emptyMsg = (news.today.errors || []).length ? t("news.feedfail")
     : isFetched ? t("news.notodayyet") : t("news.empty");
   const headRows = heads.length
-    ? compactNews(heads.map((h, i) => headlineRow(h, "h:" + i)), 6)
+    ? compactNews(heads.map((h, i) => headlineRow(h, "h:" + i, news.today.date)), 4)
     : `<p class="empty">${esc(emptyMsg)}</p>`;
   const earlierRows = earlier.map((h, i) => headlineRow(h, "e:" + i)).join("");
   const opinionRows = opinions.map((h, i) => headlineRow(h, "o:" + i)).join("");
@@ -639,40 +636,19 @@ async function pageNews(view) {
       <div class="mini__basis"><span data-mini-basis>${esc(t("mini.pending"))}</span><span class="mini__date" data-mini-date hidden></span></div>
     </button>`).join("");
 
-  const todayHint = [news.today.date, `${heads.length} ${t("news.items")}`]
-    .filter(Boolean).join(", ");
-  const todayTitle = isFetched && fetchedAt
-    ? t("news.today.title", { time: fetchedAt }) : t("news.today.plain");
-
   view.innerHTML = `
-    <div class="headrow"><div class="dateline">${esc(longDate(news.as_of))}</div></div>
+    <div class="headrow news-header"><h1 class="page">${esc(t('news.page.title'))}</h1>${subscriptionHtml(news.subscription)}</div>
     <div class="news">
       <section class="news__main">
         ${briefingBoardHtml(news.briefing, news.briefing_archive, build)}
-        <div class="col gap20">
-          <div>
-            <h1 class="page">${esc(t("news.week.title"))}</h1>
-            <details class="news-guide"><summary>${esc(t('news.readingguide'))}</summary><p class="stack-note">${esc(t("news.week.blurb"))}</p><p class="stack-note">${esc(t('news.groupingnote'))}</p></details>
-            ${news.week_start ? `<div class="hint">${esc(t("news.week.window",
-              { start: news.week_start, end: news.week_end }))}</div>` : ""}
-          </div>
-          <div class="col">
-            <div class="storyhead"><div>#</div><div>${esc(t("news.col.story"))}</div>
-              <div>${esc(t("news.col.pairs"))}</div><div class="r">${esc(t("news.col.flagged"))}</div></div>
-            ${storyRows}
-          </div>
+        <section class="news-headlines col gap14">
+          <div class="between news-section-head"><h2 class="sec">${esc(t('news.today.plain'))}</h2><time>${esc(news.today.date || '')}</time></div>
+          <div class="col">${headRows}</div>
+          <div class="news-tools">
           ${earlier.length ? `<details class="news-more"><summary>${esc(t("news.earlier"))} (${earlier.length})</summary><div class="col gap14">
-            <div class="between"><h2 class="sec">${esc(t("news.earlier"))}</h2>
-              <div class="hint">${esc(news.earlier.start)}, ${earlier.length} ${esc(t("news.items"))}</div></div>
             <div class="col">${earlierRows}</div>
             <p class="stack-note">${esc(t("news.earliernote"))}</p>
           </div></details>` : ""}
-        </div>
-        <div class="col gap14">
-          <div class="between"><h2 class="sec">${esc(todayTitle)}</h2>
-            <div class="hint">${esc(todayHint)}</div></div>
-          <div class="col">${headRows}</div>
-          ${isFetched ? `<p class="stack-note">${esc(t("news.fetchednote"))}</p>` : ""}
           ${opinions.length ? `
           <button class="opfold" type="button" id="opfold" aria-expanded="${state.opinionsOpen}">
             <i>${state.opinionsOpen ? "\u25be" : "\u25b8"}</i>
@@ -682,7 +658,19 @@ async function pageNews(view) {
             ${opinionRows}
             <p class="stack-note">${esc(t("news.opinionsnote"))}</p>
           </div>` : ""}
-        </div>
+          <details class="news-guide news-feed-details"><summary>${esc(t('news.feed.details'))}</summary>
+            ${fetchedAt ? `<p class="stack-note">${esc(t('news.fetchedat',{time:fetchedAt}))}</p>` : ''}
+            ${isFetched ? `<p class="stack-note">${esc(t('news.fetchednote'))}</p>` : ''}
+          </details></div>
+        </section>
+        <section class="news-flagged col gap14">
+          <h2 class="sec">${esc(t('news.week.title'))}</h2>
+          <div class="col">${storyRows}</div>
+          <details class="news-guide"><summary>${esc(t('news.readingguide'))}</summary>
+            ${news.week_start ? `<p class="stack-note">${esc(t('news.week.window',{start:news.week_start,end:news.week_end}))}</p>` : ''}
+            <p class="stack-note">${esc(t('news.week.blurb'))}</p><p class="stack-note">${esc(t('news.groupingnote'))}</p>
+          </details>
+        </section>
         ${driversHtml(news.drivers)}
       </section>
       <aside class="news__side">
@@ -690,22 +678,23 @@ async function pageNews(view) {
           <h3 class="side">${esc(t("news.side.pairs"))}</h3>
           <p class="mini-board__asof" data-mini-asof>${esc(t("mini.pending"))}</p>
           <div class="minigrid">${minis}</div>
-          <p class="mini-board__note" id="mini-note">${esc(t("mini.note"))}</p>
+          <details class="mini-guide"><summary>${esc(t("mini.guide"))}</summary><p class="mini-board__note" id="mini-note">${esc(t("mini.note"))}</p></details>
         </div>
-        <div class="col gap14">
-          <h3 class="side">${esc(t("news.side.flagged"))}</h3>
+        ${news.briefing?.calendar ? '' : calendarHtml(news.release_calendar)}
+        <details class="news-guide news-residual-details"><summary>${esc(t('news.residual.details'))}</summary><div class="col gap14">
           ${flaggedRows.length ? flaggedRows.slice(0, 6).map((e) => `
             <div class="between hint"><span>${esc(e.date)} ${esc(label(e.pair))}</span>
               <span style="color:${(e.residual_bp || 0) > 0 ? "var(--up)" : "var(--down)"}">${
                 fmtBp1(e.residual_bp)} bp</span></div>`).join("")
             : `<p class="empty">${esc(t("news.side.noflag"))}</p>`}
           <p class="stack-note">${esc(t("news.side.note"))}</p>
-        </div>
+        </div></details>
         <details class="news-guide"><summary>${esc(t('news.systemdetails'))}</summary>${healthPanel()}</details>
       </aside>
     </div>`;
 
   bindBriefingBoard(view, news.briefing, news.briefing_archive, build);
+  bindSubscription(view);
   const explainHtmlFor = (k) => {
     const s = byKey.get(k);                    // headlines have no Explain button; a miss is empty
     if (!s) return "";
@@ -811,7 +800,8 @@ async function pageNews(view) {
   const dates = miniCards.map((card) => card.dataset.quoteDate || "");
   const sameDate = dates.length > 0 && dates.every((date) => date && date === dates[0]);
   miniAsOf.textContent = sameDate ? t("mini.asof", { date: dates[0] })
-    : dates.some(Boolean) ? t("mini.mixed") : t("mini.nodate");
+    : dates.some(Boolean) ? "" : t("mini.nodate");
+  miniAsOf.hidden = !sameDate && dates.some(Boolean);
   miniCards.forEach((card) => { card.querySelector("[data-mini-date]").hidden = sameDate; });
 }
 

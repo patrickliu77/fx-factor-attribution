@@ -8,6 +8,8 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     os.chdir(repo)
     sys.path.insert(0, str(repo / "src"))
+    from fxdash.narrative.speech_settings import refresh_user_speech_environment
+    refresh_user_speech_environment()
     from fxdash.narrative import catchup as C, morning as M
     if not C.due(M.now_utc()):
         return 0
@@ -17,7 +19,13 @@ def main():
         sys.stdout = sys.stderr = stream
         print(M.now_utc().isoformat(), "catchup_entry_started", flush=True)
         try:
+            from fxdash.narrative import automation
+            gate = automation.before('catchup', repo/'outputs')
+            if not gate['proceed']:
+                automation.report(gate)
+                return 0
             result = C.main(["--scheduled-task"])
+            automation.report(automation.after(repo/'outputs'))
             print(M.now_utc().isoformat(), "catchup_entry_finished", "exit_code=" + str(result), flush=True)
             day = M.local_time(M.now_utc()).date().isoformat()
             state = M.read_json(repo / "outputs" / "briefing" / "catchup" / day / "status.json").get("state")

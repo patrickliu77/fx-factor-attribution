@@ -20,6 +20,7 @@ try {
     const body=await board.innerText();
     assert.ok(!body.includes('timing requirement remains unmet') && !body.includes('按时出刊要求仍未满足'));
     assert.ok(!body.includes('最近应出刊日期'));
+    await board.locator('.brief-source-details > summary').click();
     await board.locator('.brief-run-details').evaluate(el=>{el.open=true;});
     assert.ok((await board.innerText()).includes(lang==='en'?'consecutive-day quota':'连续天数门槛'));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

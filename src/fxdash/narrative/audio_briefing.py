@@ -21,8 +21,12 @@ RETRY_SECONDS = 900
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 
 
+def backend():
+    return os.environ.get("FXDASH_AUDIO", "windows" if os.name == "nt" else "off").lower()
+
+
 def enabled():
-    return os.environ.get("FXDASH_AUDIO", "windows" if os.name == "nt" else "off").lower() == "windows"
+    return backend() in {"windows", "azure"}
 
 
 def file_hash(path):
@@ -35,7 +39,9 @@ def edition_path(output_dir, mode, day):
     return Path(output_dir) / "briefing" / ("days" if mode == "edition" else "catchup") / day / "edition.json"
 
 
-def sidecar(output_dir, brief):
+def sidecar(output_dir, brief, version=S.VERSION):
+    if version not in S.VERSIONS:
+        raise ValueError("invalid_audio_version")
     mode, day, identity = brief["mode"], brief["date"], brief["edition_hash"]
     edition_path(output_dir, mode, day)
     if not isinstance(identity, str) or not HASH.fullmatch(identity):
@@ -43,7 +49,7 @@ def sidecar(output_dir, brief):
     base = Path(output_dir).resolve()
     # Keep Windows temporary filenames below legacy MAX_PATH. The full hash
     # is checked in every manifest and URL; a prefix collision is refused.
-    target = base / "briefing" / "audio" / mode / day / identity[:20] / S.VERSION
+    target = base / "briefing" / "audio" / mode / day / identity[:20] / version
     for p in (target, *target.parents):
         if p == base:
             break
@@ -58,7 +64,7 @@ def identity(brief):
     return {k: brief[k] for k in ("mode", "date", "edition_hash", "packet_hash")}
 
 
-def _language(root, brief, lang):
+def _language(root, brief, lang, version):
     try:
         path = root / (lang + ".json")
         if not path.exists():
@@ -66,7 +72,7 @@ def _language(root, brief, lang):
         value = M.read_json(path)
         state = value.get("state")
         if (path.is_symlink() or any(value.get(k) != v for k, v in identity(brief).items())
-                or value.get("script_version") != S.VERSION or value.get("language") != lang):
+                or value.get("script_version") != version or value.get("language") != lang):
             raise ValueError("audio_identity_mismatch")
         if state != "ready":
             return {"state": state if state in {"failed", "generating"} else "integrity_failed"}
@@ -75,7 +81,7 @@ def _language(root, brief, lang):
         if (media.is_symlink() or script.is_symlink() or not generated.tzinfo
                 or not 60 <= S.number(value["duration_seconds"]) <= 180
                 or not 1000 <= media.stat().st_size <= 5_000_000 or script.stat().st_size > 21000
-                or value.get("engine") != "windows-system-speech"
+                or value.get("engine") != ("azure-neural-speech" if version == S.NEURAL_VERSION else "windows-system-speech")
                 or not isinstance(value.get("voice"), str) or len(value["voice"]) > 120
                 or file_hash(media) != value["audio_sha256"] or file_hash(script) != value["script_sha256"]):
             raise ValueError("audio_integrity_failed")
@@ -83,18 +89,22 @@ def _language(root, brief, lang):
         result = {k: value[k] for k in
             ("state", "generated_at", "duration_seconds", "engine", "voice", "audio_sha256", "script_sha256")}
         result.update(transcript=text,
-            url=f"media/briefing/{brief['mode']}/{brief['date']}/{brief['edition_hash']}/{S.VERSION}/{lang}.mp3")
+            url=f"media/briefing/{brief['mode']}/{brief['date']}/{brief['edition_hash']}/{version}/{lang}.mp3")
         return result
     except (KeyError, ValueError, TypeError, AttributeError, OSError):
         return {"state": "integrity_failed"}
 
 
-def inspect(output_dir, brief):
+def inspect(output_dir, brief, *, version=None):
     """Small public contract. Unknown metadata and provider errors never escape."""
     result = {"state": "not_generated", "script_version": S.VERSION, "languages": {}}
     try:
-        root = sidecar(output_dir, brief)
-        result["languages"] = {lang: _language(root, brief, lang) for lang in ("en", "zh")}
+        if version is None:
+            neural = sidecar(output_dir, brief, S.NEURAL_VERSION)
+            version = S.NEURAL_VERSION if any((neural / (lang+".json")).exists() for lang in ("en", "zh")) else S.VERSION
+        root = sidecar(output_dir, brief, version)
+        result["script_version"] = version
+        result["languages"] = {lang: _language(root, brief, lang, version) for lang in ("en", "zh")}
         ready = sum(v["state"] == "ready" for v in result["languages"].values())
         result["state"] = "ready" if ready == 2 else "partial" if ready else "not_generated"
         if not ready and any(v["state"] in {"failed", "integrity_failed", "generating"} for v in result["languages"].values()):
@@ -119,13 +129,24 @@ def _attempt_due(previous, now):
 def ensure(output_dir, path, *, clock=M.now_utc, renderer=None):
     if renderer is None and not enabled():
         return {"state": "disabled"}
-    from .speech import render
+    version = S.NEURAL_VERSION if backend() == "azure" else S.VERSION
+    if version == S.NEURAL_VERSION:
+        from .azure_speech import render, credentials
+        if renderer is None:
+            # Missing setup is not a billable synthesis attempt. Do not create
+            # failed v2 attachments that would hide usable legacy recordings.
+            try:
+                credentials()
+            except (ValueError, RuntimeError):
+                return {"state": "configuration_required"}
+    else:
+        from .speech import render
     path = Path(path)
     mode = "catchup" if path.parent.parent.name == "catchup" else "edition"
     brief = A.read_edition(path, mode=mode)
     if brief["state"] not in {"ready", "numbers_only"}:
         return {"state": "source_unavailable"}
-    root = sidecar(output_dir, brief)
+    root = sidecar(output_dir, brief, version)
     try:
         with M.DayLock(root / "audio.lock"):
             saved = M.read_json(path)
@@ -144,17 +165,19 @@ def ensure(output_dir, path, *, clock=M.now_utc, renderer=None):
                 now = clock()
                 if not _attempt_due(previous, now):
                     continue
-                value = dict(identity(brief), script_version=S.VERSION, language=lang,
+                value = dict(identity(brief), script_version=version, language=lang,
                              state="generating", started_at=now.isoformat(), attempts=previous.get("attempts", 0)+1)
                 M.atomic_json(manifest, value)
                 try:
-                    text = S.compose(saved, packet, lang)
+                    text = S.compose(saved, packet, lang, version=version)
                     with tempfile.TemporaryDirectory(prefix="render-", dir=root) as work:
                         work = Path(work)
                         script, mp3 = work / (lang+".txt"), work / (lang+".mp3")
                         script.write_text(text, encoding="utf-8")
                         info = (renderer or render)(script, mp3, lang)
-                        if not 60 <= S.number(info["duration_seconds"]) <= 180 or not 1000 <= mp3.stat().st_size <= 5_000_000:
+                        engine = "azure-neural-speech" if version == S.NEURAL_VERSION else "windows-system-speech"
+                        if (not 60 <= S.number(info["duration_seconds"]) <= 180 or not 1000 <= mp3.stat().st_size <= 5_000_000
+                                or info.get("engine") != engine or not isinstance(info.get("voice"), str)):
                             raise ValueError("invalid_audio_output")
                         value.update({k: info[k] for k in ("engine", "voice", "duration_seconds")})
                         value.update(audio_sha256=file_hash(mp3), script_sha256=file_hash(script),
@@ -167,7 +190,7 @@ def ensure(output_dir, path, *, clock=M.now_utc, renderer=None):
                     value.update(state="failed", finished_at=clock().isoformat(), error=type(exc).__name__)
                 M.atomic_json(root / "attempts" / f"{lang}-{value['attempts']}.json", value)
                 M.atomic_json(manifest, value)
-            return inspect(output_dir, brief)
+            return inspect(output_dir, brief, version=version)
     except M.Busy:
         return {"state": "busy"}
 
@@ -192,7 +215,7 @@ def record_publication(output_dir, brief, *, state="published", clock=M.now_utc)
         digest = bundle_hash(output_dir, brief)
         if not digest:
             return
-        path = sidecar(output_dir, brief) / "publication.json"
+        path = sidecar(output_dir, brief, inspect(output_dir, brief)["script_version"]) / "publication.json"
         prior = M.read_json(path)
         M.atomic_json(path, {"state": state, "bundle_hash": digest, "edition_hash": brief["edition_hash"],
                              "observed_at": clock().isoformat(), "attempts": int(prior.get("attempts", 0))+1})
@@ -208,7 +231,7 @@ def retry_publication(output_dir, brief, repo, publisher, *, clock=M.now_utc):
         digest = bundle_hash(output_dir, brief)
         if not digest:
             return "unavailable"
-        prior = M.read_json(sidecar(output_dir, brief) / "publication.json")
+        prior = M.read_json(sidecar(output_dir, brief, inspect(output_dir, brief)["script_version"]) / "publication.json")
         if prior.get("bundle_hash") == digest:
             if prior.get("state") == "published":
                 return "already_published"
@@ -223,15 +246,15 @@ def retry_publication(output_dir, brief, repo, publisher, *, clock=M.now_utc):
 
 
 def resolve_asset(output_dir, mode, day, edition_hash, version, lang):
-    if version != S.VERSION or lang not in {"en", "zh"}:
+    if version not in S.VERSIONS or lang not in {"en", "zh"}:
         raise ValueError("invalid_audio_asset")
     brief = A.read_edition(edition_path(output_dir, mode, day), mode=mode)
     if brief.get("edition_hash") != edition_hash:
         raise ValueError("audio_edition_mismatch")
-    info = inspect(output_dir, brief)["languages"].get(lang, {})
+    info = inspect(output_dir, brief, version=version)["languages"].get(lang, {})
     if info.get("state") != "ready":
         raise ValueError("audio_unavailable")
-    return sidecar(output_dir, brief) / (lang+".mp3")
+    return sidecar(output_dir, brief, version) / (lang+".mp3")
 
 
 def main(argv=None):

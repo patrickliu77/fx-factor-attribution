@@ -42,6 +42,17 @@ def isolated_outputs(tmp_path, monkeypatch):
     # Unit tests must never invoke the workstation's real speech engine.
     # Audio-specific tests inject a synthetic renderer or explicitly mock it.
     monkeypatch.setenv("FXDASH_AUDIO", "off")
+    # Scheduled-entry tests must not import this workstation's saved credentials
+    # or overwrite the test-only off switch with a real user preference.
+    from fxdash.narrative import speech_settings
+    monkeypatch.setattr(speech_settings, "_read_user_environment", lambda: {})
+    from fxdash.narrative import release_calendar
+    monkeypatch.setattr(release_calendar, 'attach', lambda *args, **kwargs: None)
+    from fxdash.narrative import automation, public_delivery
+    monkeypatch.setattr(automation, 'request_live', lambda: {'state':'test_task_not_launched'})
+    def no_public_network(*args, **kwargs):
+        raise AssertionError('Unit tests must inject public delivery responses')
+    monkeypatch.setattr(public_delivery, 'fetch', no_public_network)
     fake_root = tmp_path / "outputs"
     fake_root.mkdir(exist_ok=True)
     for name, module in list(sys.modules.items()):

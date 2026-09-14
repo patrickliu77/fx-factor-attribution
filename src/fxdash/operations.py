@@ -115,6 +115,7 @@ def render_report(report):
                          f'<span>{"交付证据已核对" if row["passed"] else _text(labels[row["state"]])} · {context_text}</span></summary>'
                          f'<p class="note">归因截至 {_text(row["attribution_as_of"])}；生成于 {_text(row["generated_at"])}；发布于 {_text(row["published_at"])}</p>'
                          f'<p class="note">{automatic}</p>'
+                         f'<p class="note">公网核验：{_text(row.get("public_pages_delivery", "not_checked"))}；观察于 {_text(row.get("public_pages_observed_at"))}。这项记录不追溯证明原始发布时间的可访问性。</p>'
                          + (f'<ul class="checks">{checks}</ul>' if row["edition_state"] != "missing" or row["state"] == "attention" else
                             f'<p class="note">当前观察：{_text(row["waiting_reason"] or row["state"])}。尚未交付不等于生成失败。</p>')
                          + f'{problems}<p class="muted">未结束调用：{_text(row["unfinished_invocations"])}</p></details>')

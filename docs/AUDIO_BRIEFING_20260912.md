@@ -1,5 +1,9 @@
 # Saved audio briefings
 
+An opt-in neural backend is now prepared; see [Azure speech setup](AZURE_SPEECH_SETUP.md)
+for account requirements, audition commands and activation. The initial Windows
+recordings described below are preserved. Azure has not been enabled automatically.
+
 The News page now has English and Chinese recordings. Each MP3 belongs to a saved
 edition, with a transcript, measured duration, voice label and actual recording
 time. The language selector chooses the recording language. Opening a page does

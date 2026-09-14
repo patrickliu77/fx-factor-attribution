@@ -68,7 +68,10 @@ export const DICT = {
   "foot.methodology": { en: "methodology page.", zh: "方法论页。" },
 
   // ------------------------------------------------------------------ News
-  "news.week.title": { en: "This week's flagged days", zh: "本周的异常日" },
+  "news.page.title": { en: "News & briefing", zh: "新闻与简报" },
+  "news.feed.details": { en: "Feed details", zh: "新闻来源说明" },
+  "news.residual.details": { en: "Residual checks", zh: "残差检查" },
+  "news.week.title": { en: "Flagged-day coverage", zh: "异常日相关报道" },
   "news.week.blurb": {
     en: "Days where the factor model left an unusually large residual, with the stories retrieved that day as contemporaneous evidence. Newest first.",
     zh: "因子模型残差异常放大的日子，附当天检索到的报道，作为同期关联证据，最新在前。",
@@ -113,8 +116,8 @@ export const DICT = {
   },
   "news.alsoby": { en: "Also reported by", zh: "同题报道" },
   "news.fetchednote": {
-    en: "Fetched from Google News at the time shown. Headlines appear as retrieved and carry no model judgment; flagged-day evidence lives in the list above.",
-    zh: "来自 Google News，抓取时刻如上。头条按检索结果原样展示，不含模型判断；与异常残差相关的证据在上方列表。",
+    en: "Fetched from Google News at the time shown. Headlines carry no model judgment. Reporting cited in the saved commentary is listed separately under flagged-day coverage.",
+    zh: "来自 Google News，抓取时刻如上。头条不含模型判断；存档解读引用的报道单列于异常日相关报道。",
   },
   "news.feedfail": {
     en: "Could not reach the news feed just now.",
@@ -140,7 +143,7 @@ export const DICT = {
   "mini.daily": { en: "1D", zh: "单日" },
   "mini.points": { en: "{count} daily quotes", zh: "最近 {count} 个日频报价" },
   "mini.asof": { en: "Daily quotes as of {date}", zh: "报价日期 {date}" },
-  "mini.mixed": { en: "Quote dates vary; shown on each card", zh: "报价日期不同，见各卡片" },
+  "mini.guide": { en: "Chart guide", zh: "图表说明" },
   "mini.pending": { en: "Loading daily quotes", zh: "正在读取日频报价" },
   "mini.unavailable": { en: "Daily chart unavailable", zh: "日频走势暂不可用" },
   "mini.nodate": { en: "Quote date unavailable", zh: "报价日期暂不可用" },

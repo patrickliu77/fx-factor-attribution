@@ -43,7 +43,10 @@ try {
     assert.equal(await select.locator('option').count(),3);
     const deliveryText=build ? (lang==='en' ? 'Included in this build' : '已包含在当前构建')
       : (lang==='en' ? 'Push failed' : '推送失败');
+    await board.locator('.brief-source-details > summary').click();
+    if (build) await board.locator('.brief-run-details').evaluate(el=>{el.open=true;});
     assert.ok((await board.locator('[data-brief-status]').innerText()).includes(deliveryText));
+    await board.locator('.brief-source-details > summary').click();
     await select.selectOption('2026-09-02');
     assert.ok((await board.locator('[data-brief-content]').innerText()).includes(lang==='en' ? 'older edition' : '历史稿件'));
     await select.selectOption('2026-09-01');

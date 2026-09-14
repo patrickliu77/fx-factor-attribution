@@ -147,6 +147,8 @@ def prepare(output_dir: Path, *, clock=now_utc, collector=None, client_factory=m
             packet["input_archive"] = snapshot.manifest.get("input_archive")
             packet["edition_date"] = day
             packet["target_cutoff"] = cutoff(started).isoformat(timespec="seconds")
+            from .release_calendar import attach
+            attach(packet, output_dir, clock=clock)
             # Save evidence even when collection finishes after the cutoff.
             atomic_json(root / "packet.json", packet)
             eligible, reasons = packet_eligible(packet, started)
@@ -253,6 +255,10 @@ def compose_edition(packet, notes, *, moment, mode="edition", warnings=()):
                 validator_version=VALIDATOR_VERSION,
                 warnings=list(base["warnings"])+list(warnings), evidence=packet,
                 packet_hash=digest(packet))
+    from .release_calendar import public_context
+    calendar = public_context(packet, base['generated_at'])
+    if calendar:
+        base['calendar'] = calendar
     if not linked:
         base["warnings"].append("No driver commentary passed verification; saved figures remain available.")
     if any(isinstance(r, dict) and r.get('generation_failure') for r in (notes if isinstance(notes, list) else [])):

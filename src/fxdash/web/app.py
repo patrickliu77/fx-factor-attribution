@@ -485,6 +485,8 @@ def create_app(output_dir: Path | None = None,
             fallback["items"] = grouped["fallback"]
         opinion_items = grouped["opinions"]
         briefing = briefing_dashboard(s.output_dir, s.data_version)
+        from ..narrative.subscriptions import public_config
+        from ..narrative.release_calendar import read_latest as calendar_latest
 
         return {
             "as_of": s.date_last,
@@ -503,6 +505,8 @@ def create_app(output_dir: Path | None = None,
             "headline_exclusions": live.get("excluded", []),
             "briefing": briefing.pop("current") or load_preview(s.output_dir, s.data_version),
             "briefing_archive": briefing,
+            "subscription": public_config(s.output_dir),
+            "release_calendar": calendar_latest(s.output_dir),
         }
 
     @api.get("/pairs/{pair}/news")

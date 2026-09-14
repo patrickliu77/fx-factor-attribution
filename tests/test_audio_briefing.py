@@ -182,7 +182,8 @@ def test_audio_failure_does_not_block_text_publication(tmp_path,monkeypatch):
     assert A.dashboard(tmp_path)['current']['audio']['state']=='unavailable'
 
 
-def test_api_and_static_build_include_only_verified_assets(tmp_path,monkeypatch):
+@pytest.mark.parametrize('engine', ['windows', 'azure'])
+def test_api_and_static_build_include_only_verified_assets(tmp_path,monkeypatch,engine):
     from fxdash.web import headlines,market,build as W
     from fxdash.web.app import create_app
     from test_web import EMPTY_RSS,_write_cache
@@ -192,6 +193,11 @@ def test_api_and_static_build_include_only_verified_assets(tmp_path,monkeypatch)
     root.mkdir()
     path,_,_=saved(root)
     prepare(root,path)
+    if engine == 'azure':
+        monkeypatch.setenv('FXDASH_AUDIO', 'azure')
+        def neural(text, target, lang):
+            return {**renderer(text, target, lang), 'engine': 'azure-neural-speech'}
+        B.ensure(root, path, clock=lambda: moment(17, 0), renderer=neural)
     cache=tmp_path/'cache'
     _write_cache(cache)
     app=create_app(root,cache_dir=cache)
@@ -203,7 +209,9 @@ def test_api_and_static_build_include_only_verified_assets(tmp_path,monkeypatch)
     assert client.get('/'+item['url'],headers={'Range':'bytes=0-9'}).status_code==206
     assert client.get('/'+item['url'].replace('/en.mp3','/private.json')).status_code==404
     manifest=W.build(tmp_path/'site',app=app)
-    assert len(manifest['media_files'])==2
+    assert len(manifest['media_files'])==(4 if engine=='azure' else 2)
+    if engine == 'azure':
+        assert (tmp_path/'site'/item['url'].replace('/audio-v2/','/audio-v1/')).is_file()
     assert (tmp_path/'site'/item['url']).read_bytes()==reply.content
     assert not list((tmp_path/'site').rglob('packet.json'))
 
@@ -219,8 +227,9 @@ def test_frontend_is_safe_and_never_autoplays():
       const A=await import(AUDIO),I=await import(LANG);
       const ready={state:'ready',duration_seconds:91,url:'media/briefing/catchup/2026-01-08/'+'a'.repeat(64)+'/audio-v1/en.mp3',
         transcript:'<script>bad</script>',voice:'Synthetic',generated_at:'2026-01-09T10:00:00Z'};
-      for (const lang of ['en','zh']) {
+      for (const version of ['audio-v1','audio-v2']) for (const lang of ['en','zh']) {
         I.setLang(lang);
+        ready.url=ready.url.replace(/audio-v[12]/,version);
         const html=A.audioHtml({mode:'catchup',date:'2026-01-08',audio:{languages:{[lang]:ready}}});
         assert.ok(html.includes('preload="none"')); assert.ok(html.includes('controls'));
         assert.ok(!html.includes('autoplay')); assert.ok(!html.includes('<script>'));

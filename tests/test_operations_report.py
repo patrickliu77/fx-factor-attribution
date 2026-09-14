@@ -95,6 +95,9 @@ def test_windowless_entry_generates_reports_only_in_active_gate(tmp_path, monkey
     monkeypatch.setattr(M, "slot", lambda now: "publish" if active else "idle")
     calls = []
     monkeypatch.setattr(G, "main", lambda args: calls.append(args) or 0)
+    from fxdash.narrative import automation
+    monkeypatch.setattr(automation, 'before', lambda *a, **kw: {'proceed':True})
+    monkeypatch.setattr(automation, 'after', lambda *a, **kw: {'state':'idle'})
     M.atomic_json(tmp_path / "outputs/briefing/acceptance.json", {"start_date": "2026-09-08"})
     assert entry.main() == 0
     assert calls == [["--scheduled-task"]]

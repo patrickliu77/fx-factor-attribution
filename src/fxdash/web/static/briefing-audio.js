@@ -1,7 +1,7 @@
 import {getLang} from './i18n.js';
 const copy=(en,zh)=>getLang()==='zh'?zh:en;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const mediaPath=/^media\/briefing\/(edition|catchup)\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\/audio-v1\/(en|zh)\.mp3$/;
+const mediaPath=/^media\/briefing\/(edition|catchup)\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\/audio-v[12]\/(en|zh)\.mp3$/;
 const recordingTime=stamp=>{
   const date=new Date(stamp);
   if (!Number.isFinite(date.getTime())) return copy('Time unavailable','时间不可用');
@@ -20,12 +20,12 @@ export function audioHtml(brief) {
   }
   const seconds=Math.floor(item.duration_seconds), duration=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
   return `<section class="brief-audio" aria-label="${copy('Audio briefing','音频简报')}">
-    <div class="brief-audio-heading"><h3>${copy('Listen to this briefing','收听本期简报')}</h3><span>${esc(duration)} · ${copy('Synthetic voice','合成语音')}</span></div>
+    <div class="brief-audio-heading"><h3>${copy('Listen','收听简报')}</h3><span>${esc(duration)} / ${copy('Synthetic voice','合成语音')}</span></div>
     <audio controls preload="none" aria-label="${esc(copy('Briefing dated ','简报日期 ')+brief.date)}" src="${esc(item.url)}"></audio>
     <p class="hint" data-audio-error hidden>${copy('Playback failed. You can still read the transcript below or try downloading the file.','音频播放失败，可阅读下方文字稿或尝试下载文件。')}</p>
-    <details class="brief-audio-transcript"><summary>${copy('Transcript and recording details','播报稿与录音信息')}</summary>
+    <details class="brief-audio-transcript"><summary>${copy('Transcript','播报稿')}</summary>
       <p class="hint">${copy('Audio generated','音频生成于')} <time datetime="${esc(item.generated_at)}" title="${esc(item.generated_at)}">${esc(recordingTime(item.generated_at))}</time> · ${copy('New York time','纽约时间')} · ${esc(item.voice)} · ${esc(data.script_version)}</p>
-      <p class="hint">${copy('This recording reads a saved edition. Its generation date can be later than the briefing date. Research checks are included; no economic-release calendar is connected. Sources appear in this edition’s news notes below.','录音读取已保存稿件，音频生成日期可能晚于简报日期。关注点为研究核验事项，尚未接入经济发布日历。来源见本期下方新闻解读。')}</p>
+      <p class="hint">${brief.calendar ? copy('This recording uses its saved edition and limited US calendar snapshot. Schedule changes after that observation are not included.','录音使用当期存档及有限的美国日历快照，不包含读取时点之后的日程调整。') : copy('This recording reads a saved edition. Its generation date can be later than the briefing date. Research checks are included; no economic-release calendar is connected. Sources appear in this edition’s news notes below.','录音读取已保存稿件，音频生成日期可能晚于简报日期。关注点为研究核验事项，尚未接入经济发布日历。来源见本期下方新闻解读。')}</p>
       <div class="brief-audio-script">${esc(item.transcript)}</div>
       <a class="brief-audio-download" href="${esc(item.url)}" download="fx-briefing-${esc(brief.date)}-${getLang()}.mp3">${copy('Download MP3','下载 MP3')} ↗</a>
     </details></section>`;

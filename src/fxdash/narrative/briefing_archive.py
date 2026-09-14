@@ -74,6 +74,11 @@ def public_copy(value):
         notes.append({"pair": item["pair"], "note": public_note, "sources": sources,
                       "definition": definition, "checks": checks})
     result["notes"] = notes
+    # Calendar display is reconstructed from the dated frozen evidence, never live.
+    from .release_calendar import public_context
+    calendar = public_context(value.get('evidence') or {}, value.get('generated_at'))
+    if calendar:
+        result['calendar'] = calendar
     return result
 
 

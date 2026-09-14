@@ -152,6 +152,8 @@ def assess_day(output_dir, day, *, observed):
         state = "completion_unconfirmed"
     else:
         state = "observed_no_delivery"
+    from .public_delivery import observation
+    public_check = observation(root, public, clock=lambda:observed) if public.get('edition_hash') else {'state':'not_checked'}
     return {"date": day, "state": state, "passed": delivered, "checks": checks,
             "mode": mode if raw else None, "edition_state": public.get("state", "missing"),
             "generated_at": raw.get("generated_at"), "attribution_as_of": public.get("attribution_as_of"),
@@ -160,7 +162,8 @@ def assess_day(output_dir, day, *, observed):
             "context_included": bool(context["verified_notes"]), "context": context,
             "waiting_reason": status.get("state") if state == "waiting" else None,
             "input_warnings": packet_warnings, "failures": failures, "record_issues": issues,
-            "unfinished_invocations": unfinished, "public_pages_delivery": "not_checked"}
+            "unfinished_invocations": unfinished, "public_pages_delivery": public_check['state'],
+            "public_pages_observed_at": public_check.get('observed_at')}
 
 
 def assess(output_dir, *, start_date=None, clock=M.now_utc):

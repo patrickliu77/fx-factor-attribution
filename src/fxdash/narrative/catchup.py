@@ -118,6 +118,8 @@ def _run(output_dir, repo, day, *, clock, collector, client_factory, snapshot_fa
         packet["attribution_observed_at"] = observed.isoformat(timespec="seconds")
         packet["input_archive"] = snapshot.manifest.get("input_archive")
         packet["edition_date"] = day
+        from .release_calendar import attach
+        attach(packet, output_dir, clock=clock)
         warnings = packet_checks(packet, clock())
         if warnings:
             return {"state": warnings[0], "date": day}

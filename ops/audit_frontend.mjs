@@ -74,10 +74,11 @@ try {
     });
     await page.goto(base+'/#/news');
     const feed = await (await newsResponse).json();
-    await page.locator('.driver-pair').first().waitFor({timeout:60000});
+    await page.locator('.driver-context > summary').waitFor({timeout:60000});
+    await page.locator('.driver-context > summary').click();
     assert.equal(await page.locator('.driver-pair').count(),6);
     assert.equal(await page.locator('.brief-board').count(),1);
-    assert.equal(await page.locator('.brief-status-grid > div').count(),3);
+    assert.equal(await page.locator('.brief-run-details .brief-status-grid > div').count(),3);
     // A history selector needs at least one readable preview or saved edition.
     // An expired preview with no editions must retain the status desk without
     // inventing a selectable morning report.
@@ -86,7 +87,9 @@ try {
     if (!hasEdition) assert.equal(await page.locator('.brief-preview').count(),0);
     if (await page.locator('.brief-preview').count()) {
       const brief = page.locator('.brief-preview');
-      assert.ok((await brief.innerText()).includes(lang==='en' ? 'Attribution through' : '归因截至'));
+      assert.ok((await page.locator('[data-brief-history]').innerText()).includes(feed.briefing.date));
+      assert.equal(await brief.locator('.brief-asof').isVisible(),feed.briefing.attribution_as_of!==feed.briefing.date);
+      await brief.locator('.brief-source-details > summary').click();
       for (const detail of await brief.locator('.brief-note').all()) {
         await detail.locator('summary').click();
         assert.equal(await detail.locator('.brief-watch dd').count(),3);

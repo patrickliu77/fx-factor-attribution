@@ -122,6 +122,15 @@ if ($PSCmdlet.ShouldProcess("$Remote $Branch", "Force-push the site")) {
     } finally {
         Pop-Location
     }
+    # A Git push is not evidence that Pages has finished deploying. Record one
+    # bounded public probe separately; later morning/catch-up checks can retry.
+    Push-Location $repo
+    try {
+        & $Python -m fxdash.narrative.public_delivery
+        if ($LASTEXITCODE -ne 0) { Write-Host 'Public delivery is pending or incomplete; see the separate delivery receipt.' }
+    } finally {
+        Pop-Location
+    }
 }
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 Write-Host "[$stamp] publish done"

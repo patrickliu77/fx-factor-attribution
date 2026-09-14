@@ -1,5 +1,34 @@
 # Operations
 
+## Local dependency and delivery gates (September 13, 2026)
+
+The morning and catch-up entries now share `narrative.automation` checks. They
+reuse a saved edition or eligible claimed packet first. Otherwise all six OLS-126
+input dates must meet the edition requirement. Missing inputs request the existing
+`fxdash-live` task, at most twice per New York date with an hour between requests;
+an observed running worker is left alone. No missing-input check consumes an LLM
+generation claim. Task triggers, production models and frozen archives are unchanged.
+
+The publish script records a separate read-only Pages probe after a successful
+push. Later morning/catch-up checks can retry an incomplete deployment. A verified
+delivery requires matching public edition identity, text, calendar context and both
+MP3 hashes. Receipts live under `outputs/delivery/`; the usage report displays the
+actual observation time, without treating a later check as historical on-time proof.
+
+New briefing packets include observed BLS/BEA schedules. Source failures and limited
+coverage remain explicit. Calendar source files and hashes are archived under
+`outputs/calendar/`. Previously frozen editions and recordings are not rewritten.
+Only new neural scripts with calendar evidence include a code-rendered schedule item.
+
+Email subscriptions default to disabled on a new installation. See
+[email setup](../docs/EMAIL_SUBSCRIPTIONS_SETUP.md). The public page never collects
+addresses itself. A provider-hosted confirmation form appears only after explicit
+configuration; mailing requires a fresh verified public text/audio receipt. Provider
+submission and inbox delivery are distinct. Ambiguous submissions need operator
+review, with no automatic repeat. No SMS or always-on host was provisioned.
+Deployment-specific acceptance is recorded in the
+[September 14 release](../docs/RELEASE_20260914.md).
+
 Scheduling currently runs on Windows Task Scheduler with persistent local data.
 A hosted runner would need explicit durable storage for cache, input archives and
 frozen editions. The present deployment has not implemented that storage layer.

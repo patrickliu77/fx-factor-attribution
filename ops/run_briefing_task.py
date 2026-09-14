@@ -9,6 +9,8 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     os.chdir(repo)
     sys.path.insert(0, str(repo / "src"))
+    from fxdash.narrative.speech_settings import refresh_user_speech_environment
+    refresh_user_speech_environment()
     destination = repo / "outputs" / "logs" / "briefing.log"
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("a", encoding="utf-8", buffering=1) as stream:
@@ -18,7 +20,14 @@ def main():
             from fxdash.narrative.morning_dispatch import main as dispatch
             from fxdash.narrative import morning as M
             action = M.slot(M.now_utc())
+            from fxdash.narrative import automation
+            gate = automation.before('morning', repo/'outputs')
+            if not gate['proceed']:
+                automation.report(gate)
+                return 0
             result = dispatch(["--scheduled-task"])
+            if action != 'idle':
+                automation.report(automation.after(repo/'outputs'))
             print(M.now_utc().isoformat(), "scheduled_entry_finished", "exit_code=" + str(result), flush=True)
             enrollment = M.read_json(repo / "outputs" / "briefing" / "acceptance.json")
             # The optional clock window is no longer the primary acceptance.

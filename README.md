@@ -7,18 +7,17 @@ reported as a residual, with a news note when it is unusually large.
 
 [Open the dashboard](https://patrickliu77.github.io/fx-factor-attribution/)
 or read the [methodology](https://patrickliu77.github.io/fx-factor-attribution/#/methodology).
-Attribution updates each evening. After login, a weekday catch-up task prepares
-a dated briefing when saved inputs are available. There is no fixed publication
-deadline or consecutive-day quota for acceptance. The existing 09:00 New York slot
-is optional. Attribution dates, news retrieval times and publication status are
-labelled separately. The analysis covers completed trading days.
+Local Windows jobs update attribution each evening and prepare weekday briefings
+with text and saved English and Chinese audio. Readers can subscribe by email
+from the News page. The target is 09:00 New York time, with same-day catch-up
+when the computer becomes available later. GitHub Pages serves the last published
+snapshot; it does not run the analysis while the computer is off.
 
-The [audio briefing release](docs/AUDIO_BRIEFING_20260912.md) adds saved bilingual recordings.
-The [September 12 acceptance release](docs/RELEASE_20260912.md) records the delivery checks.
-The [actual-use acceptance policy](docs/USAGE_ACCEPTANCE_20260910.md) describes the
-current delivery checks. The [September 8 release notes](docs/RELEASE_20260908.md) record the earlier scope,
-verification and remaining operational work. Production model choices are unchanged;
-the [offline research findings](docs/RESEARCH_FINDINGS_20260908.md) explain why.
+The analysis covers completed trading days. Attribution dates, news observation
+times and publication dates are kept separate. See the
+[September 14 release notes](docs/RELEASE_20260914.md) for the latest changes and
+remaining delivery checks. Production model choices are unchanged; the
+[offline research findings](docs/RESEARCH_FINDINGS_20260908.md) explain why.
 
 ## How it works
 
@@ -145,6 +144,12 @@ recalculation can change dashboard values without rewriting those dated notes.
 Daily headlines are fetched independently of the narrative trigger. The public
 site includes the headlines collected at build time.
 
+The News page leads with the saved briefing, its audio player and an email
+subscription button. Four headlines are shown initially; more reporting, older
+editions and sources are available on demand. Coverage of a flagged currency day
+shares one explanation instead of repeating it under each story. Run timestamps,
+recording details and screening notes stay in expandable sections.
+
 The News page also pairs each currency's two largest factor contributions with
 factor-related searches and a separate currency-context search. Title and snippet
 rules separate retained links, candidates needing review, and exclusions. The
@@ -172,7 +177,14 @@ candidate set; they do not measure causal explanations or web-wide news recall.
 The sheet works without a server, retains the site's fonts and exports progress
 as a local JSON download. See [the review commands](ops/README.md#local-news-review).
 
-## Daily briefing and optional morning slot
+## Daily briefing and delivery
+
+![Saved market and news inputs produce a dated briefing. Audio is attached to that edition, the public text and recordings are checked, and confirmed subscribers receive a text summary and audio link.](src/fxdash/web/static/figures/delivery-en.svg)
+
+Before preparing a new edition, the scheduled entries check that all six pairs
+have suitable saved attribution dates. Missing inputs can request the existing
+live task, with a bounded retry budget. Generation waits for those inputs.
+An existing packet or readable edition is reused before any new model call.
 
 At 08:50 New York time, the morning job saves the previous session's attribution
 and the news it actually retrieved. It then requests short bilingual notes for
@@ -206,6 +218,12 @@ frozen text. When a readable morning edition already exists, only its missing
 push is retried. Register this optional task with
 `powershell -File ops/register_catchup_task.ps1`.
 
+New input packets also capture the official BLS and BEA release calendars. The
+briefing can carry a short list of scheduled US releases, with New York times.
+Coverage is limited: failed sources stay labelled, and an empty snapshot does not
+mean that no releases are scheduled. The feed contains no consensus forecasts or
+actual released figures. Older editions retain their original calendar context.
+
 Source ids, exact short excerpts, observation times, bilingual citations, numeric
 claims and wording are checked before a note is used. These checks cannot verify
 every paraphrase or establish causality. The model sees RSS titles and snippets,
@@ -229,18 +247,47 @@ section can run automatically. Independent multi-agent orchestration remains fut
 
 ### Audio briefings
 
-The News page can play a saved English or Chinese MP3, with a transcript, edition
-date, recording time and measured duration. Playback starts only when requested.
-Morning and catch-up tasks prepare the recordings from frozen figures and checked
-news notes. The audio introduces the largest three moves, their leading factor
-contributions and residuals, then lists research checks. It has no economic-calendar
-feed and does not invent a schedule of today's releases.
+The News page plays saved English and Chinese MP3s on request. Each recording has
+a transcript, edition date and measured duration. Code assembles the spoken
+script from frozen figures and checked news notes, without another language-model
+call. It covers the largest three moves, their leading contributions, residuals
+and research checks. New scripts can include a release-calendar item when it was
+present in the saved evidence.
 
-Speech uses installed Windows voices and FFmpeg, with no additional model call or
-paid API. Recordings target one to three minutes. Files have separate identity and
-publication records; audio failure leaves the text briefing available. A later
-recording of an older edition shows its actual generation time. See the
-[audio setup and limits](docs/AUDIO_BRIEFING_20260912.md).
+The deployed recordings use Azure neural speech. English uses `en-US-GuyNeural`;
+Chinese uses `zh-CN-YunyangNeural`. This optional backend requires the operator's
+own Speech resource, key and quota. Installed Windows voices remain a separate
+local option. An Azure failure never silently substitutes a Windows recording.
+See [speech setup](docs/AZURE_SPEECH_SETUP.md).
+
+Full recordings must measure one to three minutes. Successful files are reused;
+failed synthesis has a bounded retry budget. Text remains readable when audio
+fails. Each attachment has its own content hash and recording time. Older text
+and recordings are preserved when a new audio version is added.
+
+### Email subscriptions
+
+The **Get the briefing by email** button opens a Brevo-hosted subscription form.
+Readers choose the site's language and confirm through an email before joining
+that language's list. Brevo stores addresses and manages confirmation and
+unsubscribe links. The public repository and static site contain no subscriber
+list or service credentials.
+
+The daily email contains saved briefing text and a link to its recording. Before
+submitting a campaign, the local task verifies that the public edition, text and
+both audio files match the saved version. A persistent claim limits submission
+to one campaign per language and New York date. An ambiguous provider response
+requires review before another send. Old missed days are not mailed as a backlog.
+
+The target is 09:00 New York time on weekdays. The computer must be awake, signed
+in and online; late login uses that day's catch-up edition. Generation, deployment
+and email queues can delay arrival. The subscription confirmation flow has been
+checked with the owner's English test subscription. The first complete daily
+briefing email, audio-link receipt and unsubscribe still need real-world checks.
+A provider's accepted or delivered status alone does not prove inbox arrival.
+See [email setup](docs/EMAIL_SUBSCRIPTIONS_SETUP.md).
+
+### Reading older editions
 
 The News page separates preparation, edition and delivery records. Its archive
 selector shows the latest twenty saved editions without filling missing dates.

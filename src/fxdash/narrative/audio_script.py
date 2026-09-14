@@ -7,6 +7,8 @@ from datetime import date, datetime
 from . import morning as M, briefing_archive as A
 
 VERSION = "audio-v1"
+NEURAL_VERSION = "audio-v2"
+VERSIONS = (VERSION, NEURAL_VERSION)
 PAIRS = {
     "USDAUD": ("the Australian dollar", "澳元"), "USDCAD": ("the Canadian dollar", "加元"),
     "USDEUR": ("the euro", "欧元"), "USDJPY": ("the Japanese yen", "日元"),
@@ -44,10 +46,12 @@ def signed_bp(value, lang):
     return f"{sign}{abs(value):.1f}" + ("个基点" if lang == "zh" else " basis points")
 
 
-def compose(edition, packet, lang):
+def compose(edition, packet, lang, *, version=VERSION):
     """Recheck the saved links. An old archive is never upgraded with live news."""
     if lang not in {"en", "zh"}:
         raise ValueError("unsupported_audio_language")
+    if version not in VERSIONS:
+        raise ValueError("unsupported_audio_version")
     if (not A.valid_edition(edition, edition.get("date"), mode=edition.get("mode"))
             or edition["state"] not in {"ready", "numbers_only"}
             or edition.get("packet_hash") != M.digest(packet)
@@ -72,6 +76,7 @@ def compose(edition, packet, lang):
             or packet['as_of'] > edition['date']):
         raise ValueError("invalid_audio_edition_date")
     zh = lang == "zh"
+    concise = version == NEURAL_VERSION
     lines = [
         (f"这是{spoken_date(edition['date'], lang)}的外汇研究简报，采用合成语音。"
          f"归因数据截至{spoken_date(packet['as_of'], lang)}。下面回顾六个货币对中，单日波动绝对值最大的三个。"
@@ -82,6 +87,17 @@ def compose(edition, packet, lang):
          "All quotes have the dollar as the base currency. Positive returns mean a stronger dollar. "
          "Figures are log return basis points; one hundred basis points is approximately a one percent price change.")
     ]
+    if concise:
+        lines = [
+            (f"这是{spoken_date(edition['date'], lang)}的外汇简报，采用合成语音。"
+             f"数据截至{spoken_date(packet['as_of'], lang)}。"
+             "先看六个货币对中波动最大的三个。数字采用对数收益基点，正值表示美元走强。"
+             "一百个基点约等于百分之一的价格变化。") if zh else
+            (f"Here is the FX briefing for {spoken_date(edition['date'], lang)}, read by a synthetic voice. "
+             f"Data is through {spoken_date(packet['as_of'], lang)}. "
+             "We start with the three largest moves among six pairs. Figures are in log return basis points. "
+             "Positive means a stronger dollar; one hundred basis points is roughly a one percent price change.")
+        ]
     for r in sorted(rows, key=lambda r: (-abs(r["y"]), r["pair"]))[:3]:
         currency = PAIRS[r["pair"]][int(zh)]
         leading = r.get("leading", [])
@@ -92,8 +108,12 @@ def compose(edition, packet, lang):
         if leading:
             f = max(leading, key=lambda f: abs(f["contribution_bp"]))
             label = FACTORS.get(f["factor"], (f["factor"], f["factor"]))[int(zh)]
-            line += (f"贡献绝对值最大的是{label}，贡献为{signed_bp(f['contribution_bp'], lang)}。"
-                     if zh else f"The largest absolute factor contribution was {label}, at {signed_bp(f['contribution_bp'], lang)}. ")
+            if concise:
+                line += (f"模型中贡献幅度最大的是{label}，为{signed_bp(f['contribution_bp'], lang)}。"
+                         if zh else f"The largest contribution by magnitude came from {label}: {signed_bp(f['contribution_bp'], lang)}. ")
+            else:
+                line += (f"贡献绝对值最大的是{label}，贡献为{signed_bp(f['contribution_bp'], lang)}。"
+                         if zh else f"The largest absolute factor contribution was {label}, at {signed_bp(f['contribution_bp'], lang)}. ")
         line += (f"模型未解释的残差为{signed_bp(r['residual']*1e4, lang)}。"
                  if zh else f"The unexplained residual was {signed_bp(r['residual']*1e4, lang)}.")
         lines.append(line)
@@ -117,6 +137,27 @@ def compose(edition, packet, lang):
     else:
         lines.append("本段没有纳入可用的新闻解读，保留数字复盘。" if zh else
                      "No usable news interpretation is included in this audio; the numerical review remains available.")
+    if concise:
+        from .release_calendar import spoken_watch
+        watch = spoken_watch(packet, edition['generated_at'], lang)
+        if watch:
+            lines.append(watch)
+        lines.append(
+            "后续可关注主要因子的变化，以及残差是否持续偏大。新闻线索还需要核对事件日期和独立来源。"
+            "这些是研究关注点，本稿未接入经济日历。模型归因无法证明因果关系。"
+            "完整文字和来源可在网页查看，历史录音对应当期数据，不构成投资建议。" if zh else
+            "Next, watch the main factors and whether residuals stay unusually large. "
+            "Check news leads against event dates and independent sources. These are research checks; "
+            "there is no economic calendar in this briefing. Model attribution does not establish causality. "
+            "The full text and sources are on the website. Archived audio reflects its dated edition, "
+            "and this briefing is not investment advice."
+        )
+        if watch:
+            lines[-1] = lines[-1].replace('这些是研究关注点，本稿未接入经济日历。',
+                '日历仅覆盖美国劳工统计局和经济分析局，不含公布值或市场预期。').replace(
+                'These are research checks; there is no economic calendar in this briefing.',
+                'The calendar covers BLS and BEA only, without actual values or consensus forecasts.')
+        return "\n\n".join(lines)
     lines.append(
         "接下来关注三件事：核对所引报道的事件日期与独立来源；检查主要因子的后续变化是否与已保存的敏感度一致；"
         "留意残差是否持续偏大。这些是研究核验事项，本稿未接入经济日历，不能据此推断今天有哪些定时发布。"

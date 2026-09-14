@@ -41,4 +41,4 @@ for (const lang of ['en', 'zh']) {
     }
   }
 }
-console.log(`${check ? 'Verified' : 'Exported'} six Methodology illustrations with the website fonts.`);
+console.log(`${check ? 'Verified' : 'Exported'} ${figureNames.length * 2} Methodology illustrations with the website fonts.`);

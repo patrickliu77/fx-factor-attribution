@@ -59,16 +59,15 @@ const label = state => ({
 }[state] || copy('Unrecognized state','未识别的状态'));
 
 function freshnessHtml(current, now) {
-  const {state,due}=freshness(current,now);
+  const {state}=freshness(current,now);
+  if (['current_edition','current_catchup'].includes(state)) return `<span data-freshness="${state}" hidden></span>`;
   const wording={
-    no_edition:copy('No saved briefing is available in this snapshot. The host can prepare one when inputs are available.','当前快照尚无已保存简报，主机可在输入齐备后生成。'),
+    no_edition:copy('No saved briefing is available yet.','暂无已保存简报。'),
     ahead_of_due_date:copy('The edition has a future date. Check the reader and host clocks.','稿件日期晚于当前日期，请检查浏览器与主机时钟。'),
-    older_edition:copy('This is an earlier briefing. A new edition can be prepared when the host is available; absence alone does not establish a failed run.','当前显示较早的简报。主机可用后可生成新稿，缺少本日稿件本身无法证明运行失败。'),
-    current_edition:copy('A saved briefing is available for this date.','本日已有保存的简报。'),
-    current_catchup:copy('A catch-up briefing is available for this date. Delivery is checked when the host is available, without a fixed publication deadline.','本日已有补发简报，按主机可用时的实际交付检查，不设固定出刊时刻。'),
+    older_edition:copy('Showing an earlier briefing.','当前显示往期简报。'),
     archive_unreadable:copy('The latest edition file could not be read. Earlier editions remain in the archive.','最新晨报文件无法读取，较早稿件仍可从历史记录查看。'),
   }[state];
-  return `<p class="brief-freshness hint" data-freshness="${state}">${wording} ${copy('Reference weekday','日期参考')} ${esc(due)} · America/New_York</p>`;
+  return `<p class="brief-freshness hint" data-freshness="${state}">${wording}</p>`;
 }
 
 function statusHtml(current, archive, build, now) {
@@ -76,7 +75,9 @@ function statusHtml(current, archive, build, now) {
   const late=current?.mode==='catchup';
   const attempt=archive?.latest_catchup_run;
   const cell=(title,state,stamp)=>`<div><dt>${title}</dt><dd>${esc(label(state))}</dd>${stamp ? `<small>${esc(stamp)}</small>` : ''}</div>`;
-  return `${freshnessHtml(current,now)}<details class="brief-run-details"><summary>${copy('Run details','运行详情')} · ${esc(label(delivery(current,archive,build)))}</summary><dl class="brief-status-grid">
+  const delivered=delivery(current,archive,build);
+  const failed=['publish_failed','receipt_mismatch','not_confirmed_in_build'].includes(delivered);
+  return `${freshnessHtml(current,now)}${failed ? `<p class="hint brief-warning">${esc(label(delivered))}</p>` : ''}<details class="brief-run-details"><summary>${copy('Run details','运行详情')}</summary><dl class="brief-status-grid">
     ${cell(late ? copy('Latest catch-up check','最近补发检查') : copy('Last preparation record','最近准备记录'),late ? attempt?.state || 'not_recorded' : run?.prepare?.state || 'not_recorded',late ? attempt?.observed_at : run?.prepare?.started_at)}
     ${cell(copy('Latest available edition','最新可用稿件'),current?.state || 'not_recorded',current?.generated_at)}
     ${cell(copy('Latest available edition delivery','最新可用稿件交付情况'),delivery(current,archive,build),build.mode==='static' ? build.info?.built_at : (archive?.current_push?.finished_at || run?.push?.finished_at))}
@@ -89,15 +90,14 @@ export function briefingBoardHtml(current, archive, build, now=new Date()) {
   if (!archive) return briefingHtml(current);
   const history=[...(archive.history || []),...(archive.catchup_history || [])].sort((a,b)=>b.date.localeCompare(a.date));
   const key=e=>e.mode==='catchup' ? 'catchup:'+e.date : e.date;
-  return `<section class="brief-board col gap14"><h2 class="sec">${copy('Briefing archive','简报记录')}</h2>
-    <div data-brief-status>${statusHtml(current,archive,build,now)}</div>
-    ${current?.available || history.length ? `<label class="brief-history-label">${copy('Read an edition','选择稿件')}
+  return `<section class="brief-board col gap14"><div class="brief-toolbar"><h2 class="sec">${copy('Briefing','简报')}</h2>
+    ${current?.available || history.length ? `<label class="brief-history-label"><span class="sr-only">${copy('Read an edition','选择稿件')}</span>
       <select data-brief-history aria-label="${copy('Morning edition archive','晨报历史记录')}">
-        <option value="current">${copy('Latest available','当前可用')} ${esc(current?.date || '')}${current?.mode==='catchup' ? ' · '+label('catchup') : current?.mode!=='edition' ? ' · '+label('preview') : ''}</option>
+        <option value="current">${copy('Latest saved','最新存档')} ${esc(current?.date || '')}${!['edition','catchup'].includes(current?.mode) ? ' / '+label('preview') : ''}</option>
         ${history.filter(e=>key(e)!==key(current || {})).map(e=>`<option value="${esc(key(e))}">${esc(e.date)} · ${e.mode==='catchup' ? esc(label('catchup'))+' · ' : ''}${esc(label(e.state))}</option>`).join('')}
-    </select></label>` : ''}
-    ${history.length ? `<p class="hint">${copy(`${archive.total_editions || 0} morning editions and ${archive.total_catchups || 0} catch-up briefings archived. Showing up to 20 of each.`,`${archive.total_editions || 0} 期晨报、${archive.total_catchups || 0} 期补发简报，分别展示最近至多 20 期。`)}</p>` : ''}
-    <div data-brief-content>${briefingHtml(current)}</div>
+    </select></label>` : ''}</div>
+    <div data-brief-content>${briefingHtml(current,{embedded:true,runDetails:statusHtml(current,archive,build,now)})}</div>
+    ${current?.available ? '' : `<div data-brief-status>${statusHtml(current,archive,build,now)}</div>`}
   </section>`;
 }
 
@@ -112,7 +112,7 @@ export function bindBriefingBoard(root,current,archive,build) {
     const selected=event.target.value==='current' ? current : [...(archive.history || []),...(archive.catchup_history || [])]
       .find(e=>(e.mode==='catchup' ? 'catchup:'+e.date : e.date)===event.target.value);
     panel.querySelectorAll('audio').forEach(player=>player.pause());
-    panel.querySelector('[data-brief-content]').innerHTML=briefingHtml(selected);
+    panel.querySelector('[data-brief-content]').innerHTML=briefingHtml(selected,{embedded:true,runDetails:statusHtml(current,archive,build,new Date())});
     // Status always describes the latest available edition, independently of
     // which historical text the reader selected.
   });
@@ -122,7 +122,9 @@ export function refreshBriefingStatus(now=new Date()) {
   if (!activeBoard?.panel.isConnected) { activeBoard=null; return; }
   const {panel,current,archive,build}=activeBoard;
   const status=panel.querySelector('[data-brief-status]');
+  if (!status) return;
   const open=status.querySelector('details')?.open;
   status.innerHTML=statusHtml(current,archive,build,now);
-  status.querySelector('details').open=!!open;
+  const details=status.querySelector('details');
+  if (details) details.open=!!open;
 }

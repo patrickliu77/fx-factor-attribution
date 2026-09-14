@@ -11,6 +11,16 @@ const copy = {
     pipeline: ['From observations to a daily record', 'Market observations form an aligned panel. Each estimator produces its own coefficients and three contribution groups.'],
     timeline: ['The window stops before the day being explained', 'A rolling window ends at t minus one. Its fitted coefficients are applied to the factor moves on day t.'],
     lasso: ['Selection, then estimation', 'An illustrative set of eight candidate variables is reduced to three. OLS fits new coefficients on the retained columns.'],
+    delivery: ['One edition, three ways to read it', 'Observed inputs produce a saved edition and versioned recordings. Public text and both audio files are checked before a campaign is submitted to confirmed subscribers.'],
+    observed: '01 / INPUTS', saved: '02 / SAVE THE EDITION', speech: '03 / RECORD',
+    observedTitle: 'Observed evidence', observedLine1: 'Six-pair attribution', observedLine2: 'News + release schedule',
+    savedTitle: 'Dated briefing', savedLine1: 'Figures + checked notes', savedLine2: 'Freeze inputs and text',
+    speechTitle: 'English + Chinese', speechLine1: 'Script from the saved edition', speechLine2: 'Versioned MP3s and hashes',
+    verify: '04 / PUBLISH & CHECK', verifyTitle: 'Read back the public files',
+    verifyLine1: 'Match edition, text, calendar and both MP3 hashes.',
+    verifyLine2: 'Text can stay online while missing audio holds email.',
+    email: '05 / EMAIL', emailTitle: 'Confirmed subscribers', emailLine1: 'Saved text + audio link', emailLine2: 'One campaign / language / day',
+    retryNote: 'Retries reuse the saved edition. Inbox arrival needs a separate check.',
     inputs: '01 / OBSERVATIONS', panel: '02 / ALIGN BY PAIR', fits: '03 / FIT THROUGH t−1', out: '04 / ACCOUNT FOR DAY t',
     fx: 'Six USD exchange rates', macro: 'Yields, VIX, commodities, credit', basket: 'Dollar & carry baskets',
     fxnote: 'Daily log returns', macronote: 'Official yields + market series', basketnote: 'Explained pair excluded',
@@ -32,6 +42,16 @@ const copy = {
     pipeline: ['从市场观测到每日归因', '市场数据按货币对对齐。每个估计量分别生成系数和三组归因结果。'],
     timeline: ['训练窗口截至被解释日的前一天', '窗口止于 t−1，用窗口内估计的系数乘以 t 日的因子变动。'],
     lasso: ['先选择变量，再估计系数', '示意图展示从八个候选变量中保留三个，再用 OLS 估计保留列的系数。'],
+    delivery: ['同一期简报，三种阅读方式', '实际采集的输入生成保存稿与分版本录音。公开文字和两种语言的音频核对通过后，才向已确认订阅者提交邮件。'],
+    observed: '01 / 输入', saved: '02 / 保存稿件', speech: '03 / 生成录音',
+    observedTitle: '实际观测的证据', observedLine1: '六组汇率归因', observedLine2: '新闻与发布日历',
+    savedTitle: '带日期的简报', savedLine1: '数字与已检查的短评', savedLine2: '冻结输入与正文',
+    speechTitle: '英文与中文', speechLine1: '从保存稿生成口播文字', speechLine2: '分版本保存 MP3 与哈希',
+    verify: '04 / 发布与核对', verifyTitle: '读取实际公开文件',
+    verifyLine1: '核对稿件、正文、日历和两种语言的 MP3 哈希。',
+    verifyLine2: '缺少音频时文字仍可上线，邮件继续等待。',
+    email: '05 / 发送邮件', emailTitle: '已确认的订阅者', emailLine1: '保存的文字与音频链接', emailLine2: '每种语言每天一份发送活动',
+    retryNote: '重试沿用保存稿。收件箱到账需要单独验收。',
     inputs: '01 / 市场观测', panel: '02 / 按货币对对齐', fits: '03 / 用截至 t−1 的数据拟合', out: '04 / 计算 t 日归因',
     fx: '六组美元汇率', macro: '利率、VIX、商品与信用', basket: '美元与套息组合',
     fxnote: '日对数收益', macronote: '官方利率与市场序列', basketnote: '剔除被解释的货币对',
@@ -101,10 +121,31 @@ function lasso(c) {
     ${line(40,385,920,385)}${label(40,420,c.empty,'small')}${label(40,449,c.schematic,'small')}`;
 }
 
-export const figureNames = ['pipeline', 'timeline', 'lasso'];
+function delivery(c) {
+  const cards = [
+    [40,c.observed,c.observedTitle,c.observedLine1,c.observedLine2],
+    [350,c.saved,c.savedTitle,c.savedLine1,c.savedLine2],
+    [660,c.speech,c.speechTitle,c.speechLine1,c.speechLine2],
+  ];
+  return `${cards.map(([x,step,title,a,b])=>`
+    ${label(x,52,step,'eyebrow')}${rect(x,80,260,146,'tile')}
+    ${rect(x,80,260,4,'sys')}${label(x+20,125,title,'body')}
+    ${label(x+20,164,a,'small')}${label(x+20,190,b,'small')}`).join('')}
+    <path d="M307 153h34l-7-6m7 6-7 6M617 153h34l-7-6m7 6-7 6" class="wire"/>
+    <path d="M480 230v35H322v49m-6-7 6 7 6-7M790 230v35H480" class="wire"/>
+    ${label(40,300,c.verify,'eyebrow')}${label(660,300,c.email,'eyebrow')}
+    ${rect(40,327,570,160,'tile')}${rect(40,327,570,4,'exo')}
+    ${label(60,370,c.verifyTitle,'body')}${label(60,411,c.verifyLine1,'small')}${label(60,443,c.verifyLine2,'small')}
+    <path d="M617 407h34l-7-6m7 6-7 6" class="wire"/>
+    ${rect(660,327,260,160,'tile')}${rect(660,327,260,4,'res')}
+    ${label(680,370,c.emailTitle,'body')}${label(680,411,c.emailLine1,'small')}${label(680,443,c.emailLine2,'small')}
+    ${label(40,533,c.retryNote,'small')}`;
+}
+
+export const figureNames = ['pipeline', 'timeline', 'lasso', 'delivery'];
 export function methodologyFigure(name, lang = 'en') {
   const c = copy[lang] || copy.en;
-  const spec = {pipeline:[720,pipeline], timeline:[416,timeline], lasso:[480,lasso]}[name];
+  const spec = {pipeline:[720,pipeline], timeline:[416,timeline], lasso:[480,lasso], delivery:[566,delivery]}[name];
   if (!spec) throw new Error(`Unknown methodology figure: ${name}`);
   const id = `method-${name}-${lang}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 ${spec[0]}" class="method-diagram" role="img" aria-labelledby="${id}-title ${id}-desc">

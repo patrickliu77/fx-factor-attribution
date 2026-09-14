@@ -44,17 +44,18 @@ function slateHtml(slate) {
 
 export function driversHtml(data) {
   if (!data?.pairs?.length) return '';
-  return `<section class="driver-context col gap14"><h2 class="sec">${copy('Leading factors and current news','主要因子与当前新闻')}</h2>
+  return `<details class="driver-context"><summary>${copy('Explore factors and related news','查看因子与相关新闻')}</summary><div class="driver-context-body col gap14">
     <p class="stack-note">${esc(data.as_of)} · OLS 126 · ${copy('Daily log-return bp. Factor searches and currency searches are shown separately. Headlines provide reading context; their relevance to the observed move still needs checking.','单日对数收益 bp。因子检索与货币检索分开呈现。标题提供阅读线索，报道与这次波动的关联仍需核实。')}</p>
     ${data.source_policy ? `<details class="news-guide"><summary>${copy('Source selection','来源筛选说明')}</summary><p class="hint context-policy">${copy('Screening uses titles and snippets. Shortlists rotate labelled publishers, with newer reports first within each publisher. Matching links or headlines are merged; paraphrased copies can remain. Publisher labels come from RSS and do not establish independent confirmation.','筛选依据标题和摘要。优先展示列表轮流选取不同标注来源，每个来源内优先较新报道。相同链接或标题会合并，改写转载仍可能重复。来源标注取自 RSS，数量不代表独立证实。')}</p></details>` : ''}
     ${data.pairs.map(row=>`<details class="driver-pair"><summary><span>${esc(row.pair.replace('USD','USD/'))}</span><span>${bp(row.y == null ? null : row.y*1e4)}${row.provisional ? ' · '+esc(t('quote.provisional')) : ''}</span><small>${row.leading.map(f=>`${esc(factorName(f.factor))} ${bp(f.contribution_bp)}`).join(' · ')}</small></summary>
       <p class="hint">${copy('Observation','观测日期')} ${esc(row.date)} · ${copy('Residual','残差')} ${bp(row.residual == null ? null : row.residual*1e4)} · <a href="#/research/${esc(row.pair)}">${copy('Inspect sensitivities','查看敏感度')} ↗</a></p>
       ${row.leading.map(f=>`<h3>${esc(factorName(f.factor))}</h3>${slateHtml(data.slates[f.news_key])}`).join('')}
       <h3>${copy('Currency context','货币背景')}</h3>${slateHtml(data.slates[row.currency_news])}
-    </details>`).join('')}</section>`;
+    </details>`).join('')}</div></details>`;
 }
 
-export function briefingHtml(brief) {
+import {calendarHtml} from './briefing-extras.js';
+export function briefingHtml(brief,{embedded=false,runDetails=''}={}) {
   if (!brief?.available) return '';
   const lang = getLang();
   const formal = brief.mode === 'edition';
@@ -69,7 +70,6 @@ export function briefingHtml(brief) {
     generation_interrupted_saved_figures_used:copy('Generation was interrupted. Saved figures were recovered without another model call.','生成曾中断，已使用保存的数字恢复，没有重复调用模型。'),
     generation_failed_saved_figures_used:copy('Text generation failed. Saved figures remain available.','文字生成失败，保留已保存数字。'),
     generation_requests_failed:copy('Some model requests failed before content review. Saved figures remain available.','部分模型调用在内容审核前失败，已保留数字摘要。'),
-    'Provisional attribution is included and labelled.':copy('Provisional figures are marked.','待确认数字已标注。'),
     'No driver commentary passed verification; saved figures remain available.':copy('No driver note passed all checks; the saved figures remain available.','没有因子解读通过全部检查，保留已保存数字。'),
   }[w] || w);
   const notes = (brief.notes || []).map(item=>{
@@ -80,12 +80,22 @@ export function briefingHtml(brief) {
       <div class="context-slate">${item.note.evidence.map(e=>{const s=item.sources.find(s=>s.id===e.source_id);return s ? `<a href="${esc(/^https?:\/\//i.test(s.url) ? s.url : '#')}" target="_blank" rel="noopener">${esc(s.title)}<small>${esc(s.source)} · ${esc(s.published)} ↗</small></a><blockquote>${esc(e.quote)}</blockquote>` : '';}).join('')}</div>
     </details>`;
   }).join('');
-  return `<section class="brief-preview col gap14" data-briefing-state="${esc(brief.state || 'preview')}" data-briefing-mode="${esc(brief.mode)}"><h2 class="sec">${catchup ? copy('Catch-up briefing','补发简报') : formal ? copy('Morning briefing','文字晨报') : copy('Text briefing preview','文字简报预览')} ${esc(brief.date || '')}</h2>
-    <p class="hint">${copy('Attribution through','归因截至')} ${esc(brief.attribution_as_of)} · ${copy('News observed by','新闻抓取截至')} ${esc(brief.news_observed_by)}</p>
+  const editionLabel=catchup ? copy('Catch-up briefing','补发简报') : formal ? copy('Morning briefing','文字晨报') : copy('Text briefing preview','文字简报预览');
+  const text=brief.text?.[lang] || brief.text?.en || '';
+  // Formatting only: keep the saved wording and numbers, including provisional labels.
+  const paragraphs=text.split(/(?=USD\/[A-Z]{3}(?: [+-]\d|[:：]))/u).map(p=>p.trim()).filter(Boolean);
+  return `<section class="brief-preview col gap14" data-briefing-state="${esc(brief.state || 'preview')}" data-briefing-mode="${esc(brief.mode)}">${embedded ? '' : `<h2 class="sec">${editionLabel} ${esc(brief.date || '')}</h2>`}
+    <p class="brief-asof"${embedded && brief.attribution_as_of===brief.date ? ' hidden' : ''}>${copy('Data through','数据截至')} <time>${esc(brief.attribution_as_of || copy('unavailable','未知'))}</time></p>
     ${audioHtml(brief)}
-    <p>${esc(brief.text?.[lang] || brief.text?.en || '')}</p>
-    ${catchup ? `<p class="hint">${copy('Prepared when the host and inputs were available. News was collected at the actual times above; no fixed publication deadline applies.','本期在主机与输入可用后生成，新闻按上方实际时间采集，不设固定出刊时刻。')} ${esc(brief.generated_at)}</p>` : brief.late_publication ? `<p class="hint">${copy('Actual generation time:','实际生成时间：')} ${esc(brief.generated_at)}</p>` : ''}
-    <p class="stack-note">${copy('Numbers come from saved attribution. The language model uses retrieved titles and snippets; source and wording checks cannot establish causality or verify every interpretation. Publication dates have day precision.','数字取自已保存归因。语言模型阅读检索标题和摘要，来源与文字规则检查无法证明因果关系，也无法核实所有解释。新闻发布日期仅精确到日。')}</p>
+      <div class="brief-copy">${paragraphs.map(p=>`<p>${esc(p)}</p>`).join('')}</div>
+      ${calendarHtml(brief.calendar)}
     ${!formal && !catchup ? `<p class="hint">${copy('Validation preview, not a historical morning edition.','运行验收预览，不代表历史晨报。')}</p>` : ''}
-    ${brief.warnings?.map(w=>`<p class="hint">${esc(warningText(w))}</p>`).join('') || ''}${notes}</section>`;
+    ${[...new Set(brief.warnings || [])].filter(w=>w!=='Provisional attribution is included and labelled.').map(w=>`<p class="hint brief-warning">${esc(warningText(w))}</p>`).join('')}
+    <details class="brief-source-details"><summary>${copy('Details and sources','详情与来源')}</summary>
+      <p class="stack-note">${editionLabel} ${esc(brief.date || '')}</p>${notes}
+      <dl class="brief-status-grid"><div><dt>${copy('News collected by','新闻采集截至')}</dt><dd>${esc(brief.news_observed_by || copy('Unavailable','未知'))}</dd></div>
+        <div><dt>${copy('Edition generated','稿件生成于')}</dt><dd>${esc(brief.generated_at || copy('Unavailable','未知'))}</dd></div></dl>
+      <p class="stack-note">${copy('Numbers come from saved attribution. The language model uses retrieved titles and snippets; source and wording checks cannot establish causality or verify every interpretation. Publication dates have day precision. Sources are linked in the news notes above.','数字取自已保存归因。语言模型阅读检索标题和摘要，来源与文字规则检查无法证明因果关系，也无法核实所有解释。新闻发布日期仅精确到日，来源链接见上方新闻解读。')}</p>
+      ${runDetails ? `<div data-brief-status>${runDetails}</div>` : ''}
+    </details></section>`;
 }
