@@ -5,6 +5,9 @@ import json
 import pytest
 
 from fxdash.narrative import public_delivery as P, audio_briefing as B, morning as M
+# Exercise the HTTP adapter below with requests fully mocked; other tests keep
+# conftest's public-delivery network guard.
+from fxdash.narrative.public_delivery import fetch as public_fetch
 from test_audio_briefing import saved, prepare, brief
 from test_morning import moment
 
@@ -82,3 +85,33 @@ def test_saved_observation_is_read_only_and_keeps_its_real_date(tmp_path):
     assert P.observation(tmp_path,current,clock=lambda:moment(17,0))['state']=='unconfirmed'
     observed=P.observation(tmp_path,current,clock=lambda:moment(17,2))
     assert observed['observed_at']==moment(17,1).isoformat() and observed['state']=='verified'
+
+
+@pytest.mark.parametrize('version', ['audio-v1', 'audio-v2', 'audio-v3'])
+@pytest.mark.parametrize('lang', ['en', 'zh'])
+def test_public_fetch_accepts_all_saved_audio_versions(monkeypatch, version, lang):
+    import requests
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    relative = f'media/briefing/catchup/2026-01-08/{"a"*64}/{version}/{lang}.mp3'
+    calls = []
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        return nullcontext(SimpleNamespace(status_code=200, iter_content=lambda n: iter([b'ID3'])))
+    monkeypatch.setattr(requests, 'get', get)
+    assert public_fetch(relative, 100) == b'ID3'
+    assert len(calls) == 1 and calls[0][0] == P.SITE + relative
+    assert calls[0][1]['allow_redirects'] is False
+
+
+@pytest.mark.parametrize('relative', [
+    'https://evil.test/en.mp3',
+    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v4/en.mp3',
+    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v3/en.mp3?x=1',
+    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v3/../en.mp3',
+])
+def test_public_fetch_still_rejects_unapproved_paths(monkeypatch, relative):
+    import requests
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: pytest.fail('Unapproved request'))
+    with pytest.raises(ValueError, match='unapproved_public_asset'):
+        public_fetch(relative, 100)

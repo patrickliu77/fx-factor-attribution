@@ -21,7 +21,7 @@ COOLDOWN_SECONDS = 300
 def fetch(relative, limit):
     import requests
     if relative not in {'build.json', 'api/news.json'} and not re.fullmatch(
-            r'media/briefing/(edition|catchup)/\d{4}-\d{2}-\d{2}/[0-9a-f]{64}/audio-v[12]/(en|zh)\.mp3', relative):
+            r'media/briefing/(edition|catchup)/\d{4}-\d{2}-\d{2}/[0-9a-f]{64}/audio-v[123]/(en|zh)\.mp3', relative):
         raise ValueError('unapproved_public_asset')
     with requests.get(SITE+relative, timeout=(5, 12), allow_redirects=False, stream=True,
                       headers={'Cache-Control':'no-cache'}) as response:

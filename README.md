@@ -264,6 +264,9 @@ Full recordings must measure one to three minutes. Successful files are reused;
 failed synthesis has a bounded retry budget. Text remains readable when audio
 fails. Each attachment has its own content hash and recording time. Older text
 and recordings are preserved when a new audio version is added.
+New recordings use a faster pace, about 1.4 times the earlier neural version.
+The synthetic-voice label stays beside the player and is omitted from the spoken
+introduction. Existing email links retain their original recordings.
 
 ### Email subscriptions
 

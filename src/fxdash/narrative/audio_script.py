@@ -7,8 +7,9 @@ from datetime import date, datetime
 from . import morning as M, briefing_archive as A
 
 VERSION = "audio-v1"
-NEURAL_VERSION = "audio-v2"
-VERSIONS = (VERSION, NEURAL_VERSION)
+NEURAL_VERSIONS = ("audio-v2", "audio-v3")
+NEURAL_VERSION = NEURAL_VERSIONS[-1]
+VERSIONS = (VERSION, *NEURAL_VERSIONS)
 PAIRS = {
     "USDAUD": ("the Australian dollar", "澳元"), "USDCAD": ("the Canadian dollar", "加元"),
     "USDEUR": ("the euro", "欧元"), "USDJPY": ("the Japanese yen", "日元"),
@@ -76,7 +77,7 @@ def compose(edition, packet, lang, *, version=VERSION):
             or packet['as_of'] > edition['date']):
         raise ValueError("invalid_audio_edition_date")
     zh = lang == "zh"
-    concise = version == NEURAL_VERSION
+    concise = version in NEURAL_VERSIONS
     lines = [
         (f"这是{spoken_date(edition['date'], lang)}的外汇研究简报，采用合成语音。"
          f"归因数据截至{spoken_date(packet['as_of'], lang)}。下面回顾六个货币对中，单日波动绝对值最大的三个。"
@@ -98,6 +99,10 @@ def compose(edition, packet, lang, *, version=VERSION):
              "We start with the three largest moves among six pairs. Figures are in log return basis points. "
              "Positive means a stronger dollar; one hundred basis points is roughly a one percent price change.")
         ]
+        if version == "audio-v3":
+            # Disclosure remains next to the player. Keep old transcripts intact.
+            lines[0] = lines[0].replace("，采用合成语音", "").replace(
+                ", read by a synthetic voice", "")
     for r in sorted(rows, key=lambda r: (-abs(r["y"]), r["pair"]))[:3]:
         currency = PAIRS[r["pair"]][int(zh)]
         leading = r.get("leading", [])

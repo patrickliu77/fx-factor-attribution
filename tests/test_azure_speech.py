@@ -54,7 +54,8 @@ def test_ssml_escapes_saved_text_and_sets_voice_and_pauses(lang):
     assert len(root.findall('.//s:p', ns)) == 2
     assert len(root.findall('.//s:break', ns)) == 1
     assert Z.VOICES[lang][1] in body and Z.VOICES[lang][2] in body
-    assert 'rate="-5%"' in body and '450ms' in body
+    assert 'rate="+33%"' in body and '321ms' in body
+    assert 1.33 / 0.95 == pytest.approx(1.4)
 
 
 @pytest.mark.parametrize('text,lang', [('', 'en'), ('x'*4001, 'en'), ('hello', 'fr'), ('bad\x00text', 'en')])
@@ -90,6 +91,7 @@ def test_render_has_one_request_fixed_host_no_redirect_and_no_key_in_metadata(tm
     assert kwargs['allow_redirects'] is False and kwargs['timeout'] == (10, 60)
     assert kwargs['headers']['Ocp-Apim-Subscription-Key'] == 'test-private-key'
     assert 'test-private-key' not in kwargs['data'].decode()
+    assert 'rate="+33%"' in kwargs['data'].decode()
     assert 'test-private-key' not in json.dumps(result)
 
 
@@ -175,11 +177,50 @@ def neural_renderer(text, target, lang):
     return {**renderer(text, target, lang), 'engine': 'azure-neural-speech', 'voice': Z.VOICES[lang][1]}
 
 
+def legacy_neural(root, path):
+    """Previously frozen v2 attachments, independently of the current renderer."""
+    current = brief(path)
+    folder = B.sidecar(root, current, 'audio-v2')
+    folder.mkdir(parents=True)
+    edition = M.read_json(path)
+    packet = M.read_json(path.parent / 'packet.json')
+    for lang in ('en', 'zh'):
+        script, media = folder / (lang + '.txt'), folder / (lang + '.mp3')
+        script.write_text(S.compose(edition, packet, lang, version='audio-v2'), encoding='utf-8')
+        info = neural_renderer(script, media, lang)
+        M.atomic_json(folder / (lang + '.json'), dict(B.identity(current), **info,
+            script_version='audio-v2', language=lang, state='ready',
+            generated_at=moment(17, 0).isoformat(),
+            audio_sha256=B.file_hash(media), script_sha256=B.file_hash(script)))
+    return folder
+
+
+@pytest.mark.parametrize('lang', ['en', 'zh'])
+def test_v3_omits_spoken_disclosure_and_preserves_v2_body(tmp_path, lang):
+    _, edition, packet = saved(tmp_path)
+    old = S.compose(edition, packet, lang, version='audio-v2')
+    new = S.compose(edition, packet, lang, version='audio-v3')
+    disclosure = ', read by a synthetic voice' if lang == 'en' else '，采用合成语音'
+    assert old.count(disclosure) == 1
+    assert disclosure not in new
+    assert new == old.replace(disclosure, '')
+
+
+def test_legacy_neural_is_playable_when_no_new_recording_exists(tmp_path):
+    path, _, _ = saved(tmp_path)
+    legacy_neural(tmp_path, path)
+    result = B.inspect(tmp_path, brief(path))
+    assert result['state'] == 'ready' and result['script_version'] == 'audio-v2'
+
+
 def test_opt_in_creates_new_version_without_replacing_legacy_or_frozen_text(tmp_path, monkeypatch):
     path, edition, packet = saved(tmp_path)
     prepare(tmp_path, path)
     old_root = B.sidecar(tmp_path, brief(path))
     original = {p: p.read_bytes() for p in old_root.rglob('*') if p.is_file()}
+    v2_root = legacy_neural(tmp_path, path)
+    B.record_publication(tmp_path, brief(path), clock=lambda: moment(17, 0))
+    original.update({p: p.read_bytes() for p in v2_root.rglob('*') if p.is_file()})
     original[path] = path.read_bytes()
     original[path.parent/'packet.json'] = (path.parent/'packet.json').read_bytes()
     monkeypatch.setenv('FXDASH_AUDIO', 'azure')
@@ -212,6 +253,7 @@ def test_unconfigured_opt_in_preserves_legacy_and_does_not_consume_attempt(tmp_p
 def test_neural_failure_does_not_silently_fall_back_to_legacy_voice(tmp_path, monkeypatch):
     path, _, _ = saved(tmp_path)
     prepare(tmp_path, path)
+    legacy_neural(tmp_path, path)
     monkeypatch.setenv('FXDASH_AUDIO', 'azure')
     calls = []
     def failure(*args):
@@ -225,5 +267,6 @@ def test_neural_failure_does_not_silently_fall_back_to_legacy_voice(tmp_path, mo
     B.ensure(tmp_path, path, renderer=failure, clock=lambda: moment(18, 0))
     assert calls == ['en', 'zh', 'en', 'zh']
     assert B.inspect(tmp_path, brief(path), version=S.VERSION)['state'] == 'ready'
+    assert B.inspect(tmp_path, brief(path), version='audio-v2')['state'] == 'ready'
     manifests = B.sidecar(tmp_path, brief(path), S.NEURAL_VERSION).rglob('*.json')
     assert all('private-provider-error' not in p.read_text() for p in manifests)

@@ -52,11 +52,13 @@ def ssml(text, lang):
     # Literal text is escaped, including saved news quotations. It can never
     # insert SSML, external audio, a different voice or a speaking instruction.
     paragraphs = [escape(p.strip()) for p in text.split("\n\n") if p.strip()]
-    body = '<break time="450ms"/>'.join(f"<p>{p}</p>" for p in paragraphs)
+    # audio-v3: 0.95 (old rate) * 1.4 = 1.33 of the voice's default speed.
+    # Shorten explicit pauses proportionally; provider timing is approximate.
+    body = '<break time="321ms"/>'.join(f"<p>{p}</p>" for p in paragraphs)
     return (f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
             f'xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="{locale}">'
             f'<voice name="{voice}"><mstts:express-as style="{style}">'
-            f'<prosody rate="-5%">{body}</prosody></mstts:express-as></voice></speak>')
+            f'<prosody rate="+33%">{body}</prosody></mstts:express-as></voice></speak>')
 
 
 def render(transcript: Path, destination: Path, lang: str, *, preview=False):

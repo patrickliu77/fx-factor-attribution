@@ -42,8 +42,11 @@ automatically. The sample is clearly illustrative, with no claim to describe a
 real market day. A preview accepts measured durations from 10 to 60 seconds.
 
 English uses `en-US-GuyNeural` with `newscast`; Chinese uses `zh-CN-YunyangNeural`
-with `narration-professional`. SSML sets a slightly slower pace and paragraph
-pauses. [Voice/style support](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts)
+with `narration-professional`. New `audio-v3` recordings use SSML rate `+33%`
+and 321 ms paragraph pauses, targeting about 1.4 times the previous `-5%` rate
+and 450 ms pauses. Actual durations depend on the voice and text. Synthetic-voice
+disclosure stays beside the player and is omitted from the new spoken introduction.
+[Voice/style support](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts)
 and [SSML controls](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-voice)
 are documented by Microsoft. Naturalness requires listening; unit tests do not
 establish pronunciation or perceptual quality.
@@ -58,7 +61,7 @@ python -m fxdash.narrative.audio_briefing --latest
 ```
 
 This makes up to one synthesis request per missing language on this attempt, reads
-frozen evidence and saves new `audio-v2` attachments. It does not publish. Full
+frozen evidence and saves new `audio-v3` attachments. It does not publish. Full
 recordings must measure 60 to 180 seconds. Failed cloud generation leaves text
 available and does not substitute a Windows recording silently.
 
@@ -101,7 +104,9 @@ included in the request body.
 
 ## Existing recordings
 
-`audio-v1` remains immutable and uses the original Windows script. New concise
-copy is specific to `audio-v2`. Local media routes retain both versions, and static
-exports retain verified versions for the editions included in that export. Selecting
+`audio-v1` (Windows) and `audio-v2` (the earlier neural recording) remain immutable.
+The player selects `audio-v3` when present. Local media routes retain all three
+versions, and static exports retain verified versions for the editions included in
+that export. Previously emailed MP3 links keep their original recordings; an audio
+upgrade does not resend a briefing. Selecting
 `FXDASH_AUDIO=off` disables new synthesis without hiding already-saved files.

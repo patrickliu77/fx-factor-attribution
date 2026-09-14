@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import {staticFixture} from './browser_static.mjs';
 const {chromium}=await import(process.env.FXDASH_PLAYWRIGHT || 'playwright');
 const [base,out]=process.argv.slice(2);
 if (!base || !out) throw new Error('Pass dashboard URL and audit directory');
@@ -10,6 +11,7 @@ const browser=await chromium.launch({headless:true}),errors=[],results=[];
 try {
   for (const lang of ['en','zh']) for (const width of [390,1440]) {
     const context=await browser.newContext({viewport:{width,height:1000}});
+    await staticFixture(context,base);
     await context.addInitScript(({lang})=>localStorage.setItem('fxdash.lang',lang),{lang});
     const page=await context.newPage(),requests=[];
     page.on('pageerror',e=>errors.push(String(e)));
@@ -23,6 +25,15 @@ try {
     assert.equal(await player.evaluate(a=>a.paused),true);
     assert.equal(requests.length,0,'Opening the page must not download/play an MP3');
     assert.ok((await player.getAttribute('src')).endsWith('/'+lang+'.mp3'));
+    if (process.env.FXDASH_EXPECT_AUDIO_VERSION) {
+      assert.ok((await player.getAttribute('src')).includes('/'+process.env.FXDASH_EXPECT_AUDIO_VERSION+'/'));
+    }
+    assert.equal(await player.evaluate(a=>a.playbackRate),1,'The faster pace is in the MP3, not applied twice');
+    if ((await player.getAttribute('src')).includes('/audio-v3/')) {
+      const transcript=await panel.locator('.brief-audio-script').textContent();
+      assert.ok(!/read by a synthetic voice|采用合成语音/.test(transcript));
+      assert.ok((await panel.locator('.brief-audio-heading').textContent()).includes(lang==='en'?'Synthetic voice':'合成语音'));
+    }
     await player.evaluate(async a=>{window.__auditAudio=a;a.muted=true;await a.play();});
     await page.waitForFunction(()=>window.__auditAudio.currentTime>0.2);
     const actual=await player.evaluate(a=>({duration:a.duration,source:a.currentSrc,error:a.error?.code??null}));
@@ -31,7 +42,7 @@ try {
     await player.evaluate(a=>{a.pause();a.currentTime=30;});
     await page.waitForFunction(()=>Math.abs(window.__auditAudio.currentTime-30)<1);
     await panel.locator('details').evaluate(d=>{d.open=true;});
-    assert.ok((await panel.innerText()).includes(lang==='en'?'economic':'经济'));
+    assert.ok((await panel.innerText()).includes(lang==='en'?'calendar':'日历'));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await panel.screenshot({path:path.join(out,`audio-${lang}-${width}.png`)});
     await player.evaluate(a=>a.dispatchEvent(new Event('error')));
@@ -41,7 +52,9 @@ try {
     if (older) {
       await select.selectOption(older);
       assert.equal(await page.evaluate(()=>window.__auditAudio.paused),true);
-      assert.equal(await page.locator('[data-brief-content] audio').count(),0);
+      for (const archivedPlayer of await page.locator('[data-brief-content] audio').all()) {
+        assert.equal(await archivedPlayer.evaluate(a=>a.paused),true);
+      }
       await select.selectOption('current');
     }
     await page.click(`[data-lang="${lang==='en'?'zh':'en'}"]`);

@@ -81,7 +81,7 @@ def _language(root, brief, lang, version):
         if (media.is_symlink() or script.is_symlink() or not generated.tzinfo
                 or not 60 <= S.number(value["duration_seconds"]) <= 180
                 or not 1000 <= media.stat().st_size <= 5_000_000 or script.stat().st_size > 21000
-                or value.get("engine") != ("azure-neural-speech" if version == S.NEURAL_VERSION else "windows-system-speech")
+                or value.get("engine") != ("azure-neural-speech" if version in S.NEURAL_VERSIONS else "windows-system-speech")
                 or not isinstance(value.get("voice"), str) or len(value["voice"]) > 120
                 or file_hash(media) != value["audio_sha256"] or file_hash(script) != value["script_sha256"]):
             raise ValueError("audio_integrity_failed")
@@ -100,8 +100,11 @@ def inspect(output_dir, brief, *, version=None):
     result = {"state": "not_generated", "script_version": S.VERSION, "languages": {}}
     try:
         if version is None:
-            neural = sidecar(output_dir, brief, S.NEURAL_VERSION)
-            version = S.NEURAL_VERSION if any((neural / (lang+".json")).exists() for lang in ("en", "zh")) else S.VERSION
+            # Prefer the newest attempted version without hiding a failed upgrade
+            # behind older audio. Editions with only v1/v2 remain playable.
+            version = next((v for v in reversed(S.VERSIONS) if any(
+                (sidecar(output_dir, brief, v) / (lang+".json")).exists()
+                for lang in ("en", "zh"))), S.VERSION)
         root = sidecar(output_dir, brief, version)
         result["script_version"] = version
         result["languages"] = {lang: _language(root, brief, lang, version) for lang in ("en", "zh")}
@@ -134,7 +137,7 @@ def ensure(output_dir, path, *, clock=M.now_utc, renderer=None):
         from .azure_speech import render, credentials
         if renderer is None:
             # Missing setup is not a billable synthesis attempt. Do not create
-            # failed v2 attachments that would hide usable legacy recordings.
+            # failed new attachments that would hide usable legacy recordings.
             try:
                 credentials()
             except (ValueError, RuntimeError):
