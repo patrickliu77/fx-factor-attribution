@@ -25,6 +25,12 @@ mock HTTP responses and local bare Git repositories. These adapters are not
 connected to production accounts. No scheduled cloud production workflow is
 installed.
 
+The next code-only stage adds an in-memory GitHub OIDC token provider and two
+production bindings for news collection and recap composition. Token exchange
+uses mock HTTP responses in tests. The briefing integration uses synthetic
+market data and model responses with the existing source validator and edition
+composer. Neither stage authorizes a cloud account or changes local delivery.
+
 Private storage provisioning, billing approval and account authorization are
 separate from this test. Azure Blob Storage is the proposed state store because
 the owner already uses Azure Speech. A requested budget target is not a hard
@@ -145,13 +151,14 @@ and requires durable email receipts before reporting provider submission. The
 email adapter rechecks the date and verification age before each provider call.
 Provider submission remains distinct from an inbox receipt.
 
-This is orchestration infrastructure, not a live cloud executable. The callbacks
-used in these tests are synthetic. Production ports still need to connect the
-existing engines, enforce actual evidence cutoffs, freeze morning/catch-up
-editions correctly, honor existing generation claims, and publish the approved
-site bytes. Paid callbacks must retain bounded request budgets internally; a
-stage-level claim does not control hidden retries inside an arbitrary callback.
-There is no environment variable or command that enables these live ports.
+This is orchestration infrastructure, not a complete live cloud executable.
+`test_cloud_runtime.py` injects synthetic callbacks. `briefing.py` now binds two
+of the stages to the existing news and recap implementations, as detailed below.
+Quant execution, restoration into an isolated job workspace, edition installation,
+audio claims, site building and delivery still need an integrated runner. Paid
+callbacks must retain bounded request budgets internally; a stage-level claim
+does not control hidden retries inside an arbitrary callback. There is no
+environment variable or command that enables a cloud production run.
 
 Run the synthetic checks with:
 
@@ -167,11 +174,13 @@ do not import this runtime.
 
 1. After approval, validate the Blob adapter against the private account with
    scoped authentication, account-level anonymous access disabled, retention,
-   recovery and cost controls. Configure token acquisition/refresh; a pasted
-   short-lived access token is not an unattended authentication solution.
-2. Bind and test the production execution ports, including actual evidence
-   cutoffs, legacy generation claims and the portable publisher. Add the
-   currently disabled scheduling workflow and operational alerts.
+   recovery and cost controls. Register and constrain federation trust before
+   using the OIDC provider. Its mocked tests do not establish account access.
+2. Complete the isolated production runner: restore persisted state, run the
+   frozen live quant engine, install the selected edition without overwriting
+   an archive, reconcile existing audio claims, build the site, then connect the
+   portable publisher and guarded sender. Add a disabled-by-default scheduling
+   workflow and operational alerts. News/recap bindings cover only two ports.
 3. Define an audited reconciliation procedure for abandoned ownership and
    uncertain actions. Never erase a journal to make a blocked run proceed.
 4. After storage approval, run a no-send live shadow, then the reviewed cutover
@@ -190,8 +199,11 @@ Construction does not fetch a token or make a request. Each explicit operation
 obtains a bearer token from the supplied callable. The default callable reads
 only `FXDASH_BLOB_ACCESS_TOKEN`. The token goes in an authorization header and
 is excluded from snapshots and logs. The HTTP session does not inherit `.netrc`
-credentials or proxy settings. Token acquisition, refresh and federated identity
-registration are separate work; no identity or secret was created in this stage.
+credentials or proxy settings. `GitHubStorageToken` can now be supplied as this
+callable to acquire short-lived tokens automatically. It must be constructed
+explicitly; no ambient environment flag changes the Blob adapter's default.
+Federated identity registration remains separate work. No identity or secret
+was created in this stage.
 
 Before reading or writing a blob, the adapter checks container properties and
 requires private access. It uses `If-None-Match: *` for a new object and an exact
@@ -205,6 +217,84 @@ encoded bodies and oversized objects are rejected. There are no automatic HTTP
 retries, deletion calls, container creation or listing operations. A failed or
 ambiguous write remains subject to the journal's reconciliation rules. These
 checks do not replace account-level access policy or storage retention controls.
+
+## Short-lived storage credentials
+
+`identity.py` exchanges a GitHub job identity for a token scoped to
+`https://storage.azure.com/.default`. Construction makes no request. The first
+explicit call reads the job's `ACTIONS_ID_TOKEN_REQUEST_TOKEN` in memory, obtains
+an assertion for `api://AzureADTokenExchange`, and submits it to the fixed
+tenant-specific Microsoft identity endpoint. Tenant and client identifiers must
+be GUIDs. The identity service validates the assertion and federation policy;
+the application does not infer authorization from decoded JWT claims.
+
+Only public GitHub-hosted runner URLs matching the supported
+`https://<host>.actions.githubusercontent.com/.../_apis/oidc/token?api-version=2.0`
+form are accepted. Credentials, ports, fragments, extra query parameters, custom
+hosts and redirects are refused. If GitHub changes this endpoint format, the
+adapter stops until the new format is reviewed. Sovereign-cloud endpoints and
+GitHub Enterprise Server are outside this adapter's scope.
+
+The storage token stays in process memory. A monotonic clock accounts for request
+latency and refreshes at least two minutes before expiry. Concurrent callers
+share one exchange. A failed refresh clears the cached token; there is no stale
+fallback, CLI login, managed-identity discovery or automatic HTTP retry. Responses
+are bounded and duplicate JSON keys are rejected. Error messages contain fixed
+codes, not URLs, tokens or provider response bodies. The job request token is
+also included in the private snapshot and public-export secret scan.
+
+Before activation, configure a protected GitHub environment, restricted branches
+and the exact subject accepted by Entra. Verify the repository's actual subject
+format, which can include immutable owner/repository IDs. Assign only the needed
+container data permissions. The current readiness workflow has no `id-token:
+write` permission and does not instantiate this provider. No access token,
+federation registration or Azure account request was made by these tests.
+
+## Production news and recap bindings
+
+`BriefingPorts(journal, day, output_dir)` supplies `news` and `recap` callbacks for
+`pipeline.Ports`. Its output directory must belong to a separately restored job
+workspace. Do not point a future cloud worker at an actively changing local
+production directory. The two callbacks do not restore state, run regressions,
+install files, render speech, publish the site or send a campaign.
+
+Each callback requires the cloud journal's current owner and a pending claim
+whose fingerprint matches all prior stage artifacts. Calling a port directly
+without that claim cannot collect news or construct a model client. The news
+stage first checks dated legacy editions, preparation claims, saved packets and
+drafts. An intact frozen edition keeps its content and hash. An intact legacy
+draft is revalidated without another model request. Missing, corrupt, mismatched
+or incomplete legacy generation records stop for review. The port does not erase
+claims or silently collect a replacement packet.
+
+With no prior attempt, the port reads the existing six-pair snapshot, calls the
+production news collector, and attaches the release calendar. Attribution and
+news observation times are recorded at the actual collection times. All six
+pairs must share a usable attribution date. Sources must fall inside the captured
+observation interval. Empty or wholly failed news collection stops preparation.
+
+Eligible pre-09:00 New York evidence retains the morning-edition classification,
+even if text generation finishes later. Later evidence produces a catch-up
+edition with the actual news cutoff and `scheduled: false`. Collection crossing
+09:00 cannot be presented as the original morning packet. Both UTC offsets and
+midnight rollover are tested. This does not certify an exact publication time.
+
+Model use defaults to off. The explicit `use_model=True` binding constructs the
+existing Gemini client with three requests total, one attempt per request and a
+45-second request timeout. Ownership and the date are rechecked before each
+request. The existing prompt, source/excerpt validator, bilingual composer and
+human-readable recap view are reused unchanged. Quantitative definitions and
+factor settings are untouched. The result is a private `cloud-briefing-v1`
+artifact; the news packet is saved as `cloud-news-v1`. Model requests are not
+repeated if the journal already records the stage or an uncertain attempt.
+
+Run these offline checks with:
+
+    python -m pytest tests/test_cloud_identity.py tests/test_cloud_briefing.py
+
+The briefing integration tests use the real validator and composer. Quant,
+audio and build ports are synthetic, and collection/model transports are mocked.
+Passing them does not mean that the full cloud pipeline or delivery is enabled.
 
 ## Portable static publisher
 
@@ -286,6 +376,9 @@ the public repository. Keep Brevo's existing double-opt-in and unsubscribe flow.
 - [Azure Get Blob](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob)
 - [Private container properties](https://learn.microsoft.com/en-us/rest/api/storageservices/get-container-properties)
 - [Azure bearer-token authorization](https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-azure-active-directory)
+- [GitHub OIDC with Azure](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-azure)
+- [GitHub OIDC claims and job tokens](https://docs.github.com/en/actions/reference/security/oidc)
+- [Microsoft federated client credentials](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
 - [GitHub Pages branch publishing](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 - [Git push lease semantics](https://git-scm.com/docs/git-push)
 - [Azure Blob pricing](https://azure.microsoft.com/en-us/pricing/details/storage/blobs/)
