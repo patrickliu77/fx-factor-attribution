@@ -70,7 +70,7 @@ class _ClaimedClient:
 
 
 class BriefingPorts:
-    def __init__(self, journal, day, output_dir, *, clock=M.now_utc, use_model=False):
+    def __init__(self, journal, day, output_dir, *, clock=M.now_utc, use_model=False, cache_dir=None):
         operation_key("recap", day)
         if type(use_model) is not bool or not callable(clock):
             raise StateError("invalid_briefing_settings")
@@ -79,6 +79,7 @@ class BriefingPorts:
             raise StateError("briefing_path_linked")
         self.journal, self.day, self.output_dir = journal, day, root.resolve()
         self.clock, self.use_model = clock, use_model
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
 
     def _moment(self):
         moment = self.clock()
@@ -155,7 +156,8 @@ class BriefingPorts:
                 from ..web.store import Snapshot
                 from ..web.drivers import collect
                 from ..narrative.release_calendar import attach
-                snapshot = Snapshot(self.output_dir)
+                snapshot = (Snapshot(self.output_dir, cache_dir=self.cache_dir) if self.cache_dir is not None
+                            else Snapshot(self.output_dir))
                 if not M.previous_session(M.local_time(moment).date()) <= snapshot.date_last <= self.day:
                     raise StateError("waiting_for_attribution")
                 observed = self._moment()
@@ -177,7 +179,8 @@ class BriefingPorts:
     def recap(self, context):
         moment = self._claimed("recap", context)
         selected = decode(context["news"])
-        if (set(selected) != {"schema", "packet", "mode", "frozen", "records", "legacy"}
+        required = {"schema", "packet", "mode", "frozen", "records", "legacy"}
+        if (set(selected) not in (required, required | {"workspace_sha256"})
                 or selected["schema"] != "cloud-news-v1" or type(selected["legacy"]) is not bool
                 or selected["mode"] != packet_mode(selected["packet"], moment, self.day)):
             raise StateError("invalid_briefing_selection")

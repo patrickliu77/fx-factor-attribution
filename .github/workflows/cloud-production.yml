@@ -1,0 +1,84 @@
+name: Cloud briefing (activation required)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Shadow never publishes or sends
+        type: choice
+        options: [shadow, delivery]
+        default: shadow
+      model:
+        description: Allow bounded Gemini requests (may incur charges)
+        type: boolean
+        default: false
+      speech:
+        description: Allow Azure speech requests (may incur charges)
+        type: boolean
+        default: false
+  schedule:
+    - cron: '5 8 * * 1-5'
+      timezone: America/New_York
+    - cron: '0 9 * * 1-5'
+      timezone: America/New_York
+    - cron: '17 9,10,12 * * 1-5'
+      timezone: America/New_York
+
+permissions: {}
+concurrency:
+  group: fx-cloud-production
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    # No variable is created by this repository. Both gates are initially off.
+    if: >-
+      github.repository == 'patrickliu77/fx-factor-attribution' &&
+      github.ref == 'refs/heads/main' && vars.FXDASH_CLOUD_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || vars.FXDASH_CLOUD_DELIVERY_ENABLED == 'true')
+    environment: fx-cloud-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      PYTHONIOENCODING: utf-8
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.5'
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check audio inspection tool
+        run: ffprobe -version
+      - name: Run from private checkpoints
+        env:
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          FXDASH_STORAGE_ACCOUNT: ${{ vars.FXDASH_STORAGE_ACCOUNT }}
+          FXDASH_STORAGE_CONTAINER: ${{ vars.FXDASH_STORAGE_CONTAINER }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          BANXICO_TOKEN: ${{ secrets.BANXICO_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+          AZURE_SPEECH_REGION: ${{ vars.AZURE_SPEECH_REGION }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          FXDASH_PUBLISH_TOKEN: ${{ secrets.FXDASH_PUBLISH_TOKEN }}
+          RUN_MODE: ${{ github.event_name == 'schedule' && 'delivery' || inputs.mode }}
+          RUN_MODEL: ${{ github.event_name == 'schedule' || inputs.model }}
+          RUN_SPEECH: ${{ github.event_name == 'schedule' || inputs.speech }}
+        shell: bash
+        run: |
+          args=(--mode "$RUN_MODE")
+          if [ "$RUN_MODEL" = 'true' ]; then args+=(--model); fi
+          if [ "$RUN_SPEECH" = 'true' ]; then args+=(--speech); fi
+          python -m fxdash.cloud.runtime run "${args[@]}"
+      # Never upload private state or diagnostics to this public repository.

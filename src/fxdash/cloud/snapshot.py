@@ -32,7 +32,7 @@ SINGLE_FILES = (
     "outputs/heartbeat.json", "outputs/source_as_of.json",
     "outputs/contract_latest.json", "outputs/pca_monitor.parquet",
 )
-SUFFIXES = {".json", ".parquet", ".csv", ".mp3", ".txt", ".claim"}
+SUFFIXES = {".json", ".parquet", ".csv", ".mp3", ".txt", ".claim", ".ics"}
 SECRET_NAMES = (
     "FRED_API_KEY", "BANXICO_TOKEN", "GEMINI_API_KEY", "AZURE_SPEECH_KEY",
     "BREVO_API_KEY", "FXDASH_BLOB_SAS", "FXDASH_BLOB_ACCESS_TOKEN",
@@ -55,6 +55,7 @@ def relative_path(value):
         raise SnapshotError("invalid_snapshot_path")
     allowed = value in SINGLE_FILES or any(value.startswith(p + "/") for p in DIRECTORIES)
     if (not allowed or PurePosixPath(value).suffix not in SUFFIXES
+            or (value.endswith(".ics") and not value.startswith("outputs/calendar/"))
             or any(p.startswith("render-") for p in parts)):
         raise SnapshotError("snapshot_path_not_allowed")
     return value

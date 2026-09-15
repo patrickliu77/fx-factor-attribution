@@ -22,14 +22,21 @@ claims, a guarded email adapter and checkpoint sequencing. Its tests inject
 synthetic execution ports and a local SQLite store. The subsequent adapter stage
 implements Azure Blob REST access and portable branch publication, tested with
 mock HTTP responses and local bare Git repositories. These adapters are not
-connected to production accounts. No scheduled cloud production workflow is
-installed.
+connected to production accounts.
 
 The next code-only stage adds an in-memory GitHub OIDC token provider and two
 production bindings for news collection and recap composition. Token exchange
 uses mock HTTP responses in tests. The briefing integration uses synthetic
 market data and model responses with the existing source validator and edition
 composer. Neither stage authorizes a cloud account or changes local delivery.
+
+The integrated runner is now implemented. Disposable source copies isolate
+quant and build paths from the checkout and the local production tree. The
+runner installs frozen editions, reuses or creates single-language audio
+attachments, builds and inspects the public export, and connects the guarded
+publisher and sender. The production and watchdog workflows are checked in with
+activation gates off. No account resource, secret or live schedule was enabled.
+See [Cloud operations](CLOUD_OPERATIONS.md) for the current entry points.
 
 Private storage provisioning, billing approval and account authorization are
 separate from this test. Azure Blob Storage is the proposed state store because
@@ -114,8 +121,11 @@ has been saved. A changed input or missing artifact blocks replay.
 
 The owner lock has no automatic expiry. Normal completion releases it. A killed
 process can leave an occupied lock, which requires operator reconciliation and
-confirmation that the old worker stopped. There is no automatic lock-breaking
-command. This version prioritizes avoiding concurrent writers over unattended
+confirmation that the old worker stopped. The explicit reconciliation command
+requires an exact reviewed journal hash, matching owner and GitHub run attempt,
+a scheduler-stop attestation and a fresh completed-run response from GitHub.
+It releases only ownership and preserves every claim. There is no automatic
+lock-breaking command. This version prioritizes avoiding concurrent writers over unattended
 recovery. Storage reads, claim writes or result writes failing all stop progress.
 
 | Interruption | Behavior on a later attempt |
@@ -151,14 +161,15 @@ and requires durable email receipts before reporting provider submission. The
 email adapter rechecks the date and verification age before each provider call.
 Provider submission remains distinct from an inbox receipt.
 
-This is orchestration infrastructure, not a complete live cloud executable.
-`test_cloud_runtime.py` injects synthetic callbacks. `briefing.py` now binds two
-of the stages to the existing news and recap implementations, as detailed below.
-Quant execution, restoration into an isolated job workspace, edition installation,
-audio claims, site building and delivery still need an integrated runner. Paid
-callbacks must retain bounded request budgets internally; a stage-level claim
-does not control hidden retries inside an arbitrary callback. There is no
-environment variable or command that enables a cloud production run.
+`runtime.py` now binds this orchestration to `ports.py`. The news, composer,
+speech attachment, static builder, publisher, public probe and email sender use
+the existing production implementations. Quant runs the frozen engine in a
+copied, verified workspace. Paid callbacks retain bounded budgets internally:
+three model requests with one attempt each and one request per new audio
+language. A stage-level claim alone cannot control hidden callback retries.
+The cloud command defaults to shadow mode. Delivery additionally requires a
+persisted single-owner cutover attestation; workflow variables alone cannot
+authorize sending.
 
 Run the synthetic checks with:
 
@@ -170,19 +181,17 @@ lag, date rollover and both New York UTC offsets. Real Brevo, speech, model and
 storage endpoints are not called. The existing local production entry points
 do not import this runtime.
 
-## Remaining code and deployment work
+## Remaining account and live acceptance work
 
 1. After approval, validate the Blob adapter against the private account with
    scoped authentication, account-level anonymous access disabled, retention,
    recovery and cost controls. Register and constrain federation trust before
    using the OIDC provider. Its mocked tests do not establish account access.
-2. Complete the isolated production runner: restore persisted state, run the
-   frozen live quant engine, install the selected edition without overwriting
-   an archive, reconcile existing audio claims, build the site, then connect the
-   portable publisher and guarded sender. Add a disabled-by-default scheduling
-   workflow and operational alerts. News/recap bindings cover only two ports.
-3. Define an audited reconciliation procedure for abandoned ownership and
-   uncertain actions. Never erase a journal to make a blocked run proceed.
+2. Configure the protected GitHub environment and its credentials, verify OIDC
+   trust, seed the private store and enable personal failed-workflow notifications.
+   Check private-state growth, service quotas and source licensing before use.
+3. Exercise the implemented reconciliation command and runbook against the
+   authorized account. Never erase a journal to make a blocked run proceed.
 4. After storage approval, run a no-send live shadow, then the reviewed cutover
    and consecutive-day acceptance described above. The PC still owns production
    until those checks and approvals are complete.
@@ -292,9 +301,14 @@ Run these offline checks with:
 
     python -m pytest tests/test_cloud_identity.py tests/test_cloud_briefing.py
 
-The briefing integration tests use the real validator and composer. Quant,
-audio and build ports are synthetic, and collection/model transports are mocked.
-Passing them does not mean that the full cloud pipeline or delivery is enabled.
+The original briefing tests use the real validator and composer with synthetic
+quant/audio/build ports. The additional `test_cloud_production.py` suite connects
+real private bundles, composition, audio manifests, static builds, local Git,
+public-byte checks and the sender. Market downloads, model/speech transports and
+Brevo are mocked; the quant subprocess boundary is injected. It tests fresh-worker
+resume without repeated model calls, synthesis, pushes or campaign submissions.
+Passing these tests does not certify live data access, neural voice quality,
+Azure authorization, Pages deployment latency or inbox arrival.
 
 ## Portable static publisher
 
@@ -358,7 +372,9 @@ GitHub Pages deployment, live-input freshness or inbox delivery.
 
 The local machine currently owns production delivery. The cloud readiness
 workflow runs manually or on the isolated cloud-readiness candidate branch,
-with no automatic schedule and no delivery capability. Enabling a cloud
+with no automatic schedule and no delivery capability. The separate production
+and watchdog definitions have schedules but all jobs are disabled until the
+documented repository activation gates are explicitly set. Enabling a cloud
 production job before storage, claims and cutover are accepted is unsafe.
 
 GitHub access, Azure authorization and any billing acknowledgement require the

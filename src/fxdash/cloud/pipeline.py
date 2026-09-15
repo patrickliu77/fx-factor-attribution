@@ -8,6 +8,7 @@ this module only owns ordering, persistence and the outward-delivery clock gate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import nullcontext
 from datetime import time
 from typing import Callable, Mapping
 
@@ -31,7 +32,7 @@ def delivery_day(day, moment):
     return local.weekday() < 5 and local.date().isoformat() == day and local.time() >= time(9)
 
 
-def run(journal: Journal, day, seed: bytes, ports: Ports, *, mode="shadow", clock=M.now_utc):
+def run(journal: Journal, day, seed: bytes, ports: Ports, *, mode="shadow", clock=M.now_utc, owned=False):
     operation_key("inputs", day)
     if (mode not in {"shadow", "delivery"} or set(ports.stages) != set(STAGES)
             or not all(callable(p) for p in ports.stages.values())
@@ -40,7 +41,8 @@ def run(journal: Journal, day, seed: bytes, ports: Ports, *, mode="shadow", cloc
     local = M.local_time(clock())
     if local.weekday() >= 5 or local.date().isoformat() != day:
         return {"state": "outside_run_day", "mode": mode}
-    with journal.session():
+    with (nullcontext() if owned else journal.session()):
+        journal._owned()
         hashes = {"seed": save_artifact(journal.store, seed)}
         context = {"seed": seed}
 

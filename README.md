@@ -13,6 +13,13 @@ from the News page. The target is 09:00 New York time, with same-day catch-up
 when the computer becomes available later. GitHub Pages serves the last published
 snapshot; it does not run the analysis while the computer is off.
 
+Cloud-runner code and disabled scheduling workflows are available in this
+repository. They restore private checkpoints, reuse the same calculations and
+briefing code, and guard publication and email against duplicate attempts.
+Storage and account access have not been provisioned, and production still runs
+locally. See the [cloud operations guide](docs/CLOUD_OPERATIONS.md) for activation,
+recovery and the live checks still required.
+
 The analysis covers completed trading days. Attribution dates, news observation
 times and publication dates are kept separate. See the
 [September 14 release notes](docs/RELEASE_20260914.md) for the latest changes and

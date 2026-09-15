@@ -1,0 +1,47 @@
+name: Cloud delivery watchdog (activation required)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 9,11,15 * * 1-5'
+      timezone: America/New_York
+
+permissions: {}
+concurrency:
+  group: fx-cloud-watchdog
+  cancel-in-progress: false
+
+jobs:
+  delivery-health:
+    if: >-
+      github.repository == 'patrickliu77/fx-factor-attribution' &&
+      github.ref == 'refs/heads/main' && vars.FXDASH_CLOUD_ENABLED == 'true' &&
+      vars.FXDASH_CLOUD_DELIVERY_ENABLED == 'true'
+    environment: fx-cloud-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: src
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.5'
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check today's durable delivery records
+        env:
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          FXDASH_STORAGE_ACCOUNT: ${{ vars.FXDASH_STORAGE_ACCOUNT }}
+          FXDASH_STORAGE_CONTAINER: ${{ vars.FXDASH_STORAGE_CONTAINER }}
+        run: python -m fxdash.cloud.runtime health
+      # A missing run or storage outage fails this independent workflow. Enable
+      # GitHub's failed-workflow email notifications in the operator's account.
+      # This monitor has no model, speech, publisher or Brevo credentials.
