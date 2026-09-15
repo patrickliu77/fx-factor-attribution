@@ -6,6 +6,28 @@ import json
 from pathlib import Path
 
 
+def frozen_profile(profile):
+    from ..config import OFFSETS
+    if not isinstance(profile, dict) or profile.get("frozen") is not True:
+        return False
+    entries = profile.get("entries")
+    if not isinstance(entries, list):
+        return False
+    expected = {(pair, group): offset for pair, groups in OFFSETS.items() for group, offset in groups.items()}
+    found = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return False
+        key = (entry.get("pair"), entry.get("factor_class"))
+        if (key not in expected or key in found
+                or type(entry.get("frozen_offset")) is not int
+                or type(entry.get("chosen_offset")) is not int
+                or entry["frozen_offset"] != expected[key] or entry["chosen_offset"] != expected[key]):
+            return False
+        found.add(key)
+    return found == set(expected)
+
+
 def inspect(root, *, snapshot_factory=None):
     from .. import config
     from ..web.store import Snapshot
@@ -31,8 +53,8 @@ def inspect(root, *, snapshot_factory=None):
         return result
     try:
         profile = json.loads((root / "outputs/alignment/profile.json").read_text(encoding="utf-8"))
-        if not isinstance(profile, dict) or not profile.get("summary"):
-            checks.append("alignment_profile_unreadable")
+        if not frozen_profile(profile):
+            checks.append("frozen_alignment_mismatch")
         saved = (snapshot_factory or Snapshot)(root / "outputs", cache_dir=root / "data/cache")
         expected = {(p, w, m) for p in config.PAIRS for w in config.WINDOWS for m in config.MODELS}
         if set(saved.combos) != expected:

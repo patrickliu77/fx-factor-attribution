@@ -10,6 +10,10 @@ supported once the workflow is on the default branch. It has read-only
 repository permission, receives no provider secrets, and
 cannot publish the website or send a campaign. Local schedules remain enabled.
 
+The owner subsequently selected code and tests only, with no paid storage
+provisioning. No cloud credentials or private seed have been uploaded. Completing
+this readiness stage does not enable unattended production delivery.
+
 Private storage provisioning, billing approval and account authorization are
 separate from this test. Azure Blob Storage is the proposed state store because
 the owner already uses Azure Speech. A requested budget target is not a hard

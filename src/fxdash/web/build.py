@@ -209,7 +209,8 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
                 if current["mode"] == "catchup":
                     briefing["mode"] = "catchup"
 
-    moment = (now or datetime.now()).astimezone()
+    # An explicit zoned clock must not be rewritten to the runner's timezone.
+    moment = now if now is not None and now.utcoffset() is not None else (now or datetime.now()).astimezone()
     manifest = {
         "built_at": moment.isoformat(timespec="seconds"),
         "tz_offset": _tz_offset(moment),

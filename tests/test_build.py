@@ -145,6 +145,15 @@ def test_build_wipes_the_target_and_never_touches_the_inputs(site_app, tmp_path)
     assert not (STATIC_DIR / "build.json").exists()  # the source tree stays a live server
 
 
+@pytest.mark.parametrize("hours", [0, 9, -4])
+def test_explicit_build_timezone_is_independent_of_host(site_app, tmp_path, hours):
+    _, app = site_app
+    moment = datetime(2026, 9, 14, 9, 0, tzinfo=timezone(timedelta(hours=hours)))
+    manifest = B.build(tmp_path / "site", app=app, now=moment)
+    assert manifest["built_at"] == moment.isoformat(timespec="seconds")
+    assert manifest["tz_offset"] == f"{hours:+03d}:00"
+
+
 def test_cli_builds_from_explicit_directories(site_app, tmp_path, capsys):
     root, _ = site_app
     out = tmp_path / "site"

@@ -16,10 +16,15 @@ def no_real_keys(monkeypatch):
 
 
 def seed(root):
+    from fxdash.config import OFFSETS
+    profile = {"frozen": True, "entries": [
+        {"pair": p, "factor_class": g, "frozen_offset": o, "chosen_offset": o}
+        for p, groups in OFFSETS.items() for g, o in groups.items()
+    ]}
     files = {
         "data/cache/FX.parquet": b"cache fixture",
         "data/user/fred_BAMLH0A0HYM2.csv": b"DATE,VALUE\n2020-01-01,4.0\n",
-        "outputs/alignment/profile.json": b'{"summary":{"frozen":true}}',
+        "outputs/alignment/profile.json": json.dumps(profile).encode(),
         "outputs/status.json": b'{"state":"green"}',
         "outputs/run_manifest.json": b'{"model_revision":"test"}',
         "outputs/source_as_of.json": b'{"USDAUD.fx":"2026-09-11"}',
@@ -229,7 +234,7 @@ def test_readiness_is_only_a_snapshot_check(tmp_path):
     assert "not_live_or_delivery" in result["scope"]
 
 
-@pytest.mark.parametrize("problem", ["missing_seed", "wrong_model", "missing_combo", "mixed_dates"])
+@pytest.mark.parametrize("problem", ["missing_seed", "wrong_model", "missing_combo", "mixed_dates", "offset", "unfrozen"])
 def test_incomplete_seed_is_not_ready(tmp_path, problem):
     from types import SimpleNamespace
     from fxdash import config
@@ -244,6 +249,14 @@ def test_incomplete_seed_is_not_ready(tmp_path, problem):
         fake.manifest["model_revision"] = "not-the-frozen-revision"
     elif problem == "missing_combo":
         combos.pop(next(iter(combos)))
+    elif problem in {"offset", "unfrozen"}:
+        path = tmp_path / "outputs/alignment/profile.json"
+        profile = json.loads(path.read_text())
+        if problem == "offset":
+            profile["entries"][0]["chosen_offset"] = -1
+        else:
+            profile["frozen"] = False
+        path.write_text(json.dumps(profile))
     else:
         next(iter(combos.values())).dates = ["2026-09-10"]
     result = P.inspect(tmp_path, snapshot_factory=lambda *a, **kw: fake)
