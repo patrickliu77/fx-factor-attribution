@@ -1,0 +1,1 @@
+{"state":"green","last_run":"2026-09-14T20:15:04-05:00","last_published":"2026-09-08T20:58:43-05:00","age_hours":19.73,"published_age_hours":163.0,"warn_hours":26,"crit_hours":72,"reasons":["2026-09-14 no trigger among the six pairs, nothing to generate"],"generated_at":"2026-09-14T20:15:04-05:00","days_on_record":11}
