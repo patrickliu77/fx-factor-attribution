@@ -38,6 +38,12 @@ publisher and sender. The production and watchdog workflows are checked in with
 activation gates off. No account resource, secret or live schedule was enabled.
 See [Cloud operations](CLOUD_OPERATIONS.md) for the current entry points.
 
+The free GitHub environment has subsequently been created: `fx-cloud-production`
+permits only the `main` branch and has no environment secrets. Both activation
+variables are explicitly `false`. These settings were verified by API readback.
+The existing Pages environment and local schedules are unchanged. Azure identity,
+storage and provider credentials remain unconfigured.
+
 Private storage provisioning, billing approval and account authorization are
 separate from this test. Azure Blob Storage is the proposed state store because
 the owner already uses Azure Speech. A requested budget target is not a hard
@@ -187,7 +193,7 @@ do not import this runtime.
    scoped authentication, account-level anonymous access disabled, retention,
    recovery and cost controls. Register and constrain federation trust before
    using the OIDC provider. Its mocked tests do not establish account access.
-2. Configure the protected GitHub environment and its credentials, verify OIDC
+2. Verify the prepared GitHub environment, configure its credentials and OIDC
    trust, seed the private store and enable personal failed-workflow notifications.
    Check private-state growth, service quotas and source licensing before use.
 3. Exercise the implemented reconciliation command and runbook against the

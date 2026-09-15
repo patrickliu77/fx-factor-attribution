@@ -9,8 +9,11 @@ durable conditional claims. Saved results survive the runner's temporary disk.
 
 Production remains on the owner's computer. No paid storage, cloud identity,
 secret upload, real model/speech request or email submission was made during
-this preparation. The repository's activation variables remain unset. Checking
-in a workflow does not establish a functioning deployment.
+this preparation. GitHub now has a dedicated `fx-cloud-production` environment
+restricted to the `main` branch, with no allowed tags and no environment secrets.
+Both repository activation variables are explicitly `false`. The existing
+`github-pages` environment is unchanged. Checking in a workflow or preparing its
+environment does not establish a functioning deployment.
 
 ## State and execution
 
@@ -53,15 +56,17 @@ and email keep the detailed figures separate from that recap.
 
 ## Account setup, after approval
 
-These actions have not been performed:
+The free GitHub environment and its `main`-only deployment rule have been
+created and read back through the API. No provider secrets were uploaded and no
+production workflow was dispatched. These actions remain:
 
 1. Create a private Azure container. Disable anonymous access at account level,
    require TLS, review region and retention, and set budget alerts. An alert is
    not a hard spending cap. Do not enable blanket deletion of active artifacts
    or the journal. Snapshot limits bound an individual upload, not total cost.
 2. Create a narrowly scoped federated identity for the protected
-   `fx-cloud-production` GitHub environment. Restrict that environment to the
-   repository's `main` branch. Confirm the actual OIDC subject and grant only
+   `fx-cloud-production` GitHub environment. Its `main`-only branch policy is
+   already configured; verify it again before activation. Confirm the actual OIDC subject and grant only
    the required container data permissions. No general Azure administrator role
    or storage account key is needed by the runner.
 3. Set environment variables `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
@@ -108,7 +113,7 @@ between those writes, inspect the account before proceeding. Never initialize
 over partial state or move to a fresh container to evade existing send claims.
 
 After the private seed and identity are accepted, set the repository variable
-`FXDASH_CLOUD_ENABLED=true`. Leave `FXDASH_CLOUD_DELIVERY_ENABLED` unset. Dispatch
+`FXDASH_CLOUD_ENABLED=true`. Keep `FXDASH_CLOUD_DELIVERY_ENABLED=false`. Dispatch
 **Cloud briefing (activation required)** on `main` in shadow mode. Its model and
 speech inputs default to false. Turning either on explicitly authorizes the
 corresponding provider calls and requires a separate quota/cost decision.
