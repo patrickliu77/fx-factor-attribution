@@ -182,7 +182,7 @@ def test_audio_failure_does_not_block_text_publication(tmp_path,monkeypatch):
     assert A.dashboard(tmp_path)['current']['audio']['state']=='unavailable'
 
 
-@pytest.mark.parametrize('engine', ['windows', 'azure-v2', 'azure-v3', 'azure'])
+@pytest.mark.parametrize('engine', ['windows', 'azure-v2', 'azure-v3', 'azure-v4', 'azure'])
 def test_api_and_static_build_include_only_verified_assets(tmp_path,monkeypatch,engine):
     from fxdash.web import headlines,market,build as W
     from fxdash.web.app import create_app
@@ -193,7 +193,7 @@ def test_api_and_static_build_include_only_verified_assets(tmp_path,monkeypatch,
     root.mkdir()
     path,_,_=saved(root)
     prepare(root,path)
-    legacy_versions = ('audio-v2', 'audio-v3') if engine in {'azure-v3', 'azure'} else ('audio-v2',) if engine == 'azure-v2' else ()
+    legacy_versions = ('audio-v2', 'audio-v3', 'audio-v4') if engine in {'azure-v4', 'azure'} else ('audio-v2', 'audio-v3') if engine == 'azure-v3' else ('audio-v2',) if engine == 'azure-v2' else ()
     for version in legacy_versions:
         from test_azure_speech import legacy_neural
         legacy_neural(root, path, version=version)
@@ -234,15 +234,15 @@ def test_frontend_is_safe_and_never_autoplays():
       const A=await import(AUDIO),I=await import(LANG);
       const ready={state:'ready',duration_seconds:91,url:'media/briefing/catchup/2026-01-08/'+'a'.repeat(64)+'/audio-v1/en.mp3',
         transcript:'<script>bad</script>',voice:'Synthetic',generated_at:'2026-01-09T10:00:00Z'};
-      for (const version of ['audio-v1','audio-v2','audio-v3','audio-v4']) for (const lang of ['en','zh']) {
+      for (const version of ['audio-v1','audio-v2','audio-v3','audio-v4','audio-v5']) for (const lang of ['en','zh']) {
         I.setLang(lang);
-        ready.url=ready.url.replace(/audio-v[1234]/,version);
+        ready.url=ready.url.replace(/audio-v[12345]/,version);
         const html=A.audioHtml({mode:'catchup',date:'2026-01-08',audio:{languages:{[lang]:ready}}});
         assert.ok(html.includes('preload="none"')); assert.ok(html.includes('controls'));
         assert.ok(!html.includes('autoplay')); assert.ok(!html.includes('<script>'));
         assert.ok(html.includes('1:31')); assert.ok(html.includes('2026-01-09'));
         assert.ok(html.includes(lang==='en'?'Synthetic voice':'合成语音'));
-        assert.ok(!A.audioHtml({mode:'catchup',audio:{languages:{[lang]:{...ready,url:ready.url.replace(version,'audio-v5')}}}}).includes('<audio'));
+        assert.ok(!A.audioHtml({mode:'catchup',audio:{languages:{[lang]:{...ready,url:ready.url.replace(version,'audio-v6')}}}}).includes('<audio'));
         assert.ok(!A.audioHtml({mode:'catchup',audio:{languages:{[lang]:{...ready,url:'https://evil.example/'}}}}).includes('<audio'));
       }
     """.replace('AUDIO',json.dumps((STATIC_DIR/'briefing-audio.js').as_uri())).replace('LANG',json.dumps((STATIC_DIR/'i18n.js').as_uri()))

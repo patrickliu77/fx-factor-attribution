@@ -110,6 +110,9 @@ def email_text(brief, lang):
     Match only the numeric-summary annotation, not that word in news reporting.
     Data status stays available on the linked dashboard and in archived evidence.
     """
+    recap = brief.get('recap') or {}
+    if recap.get('version') == 'market-recap-v1' and recap.get('text', {}).get(lang):
+        return recap['text'][lang]
     annotation = r' \(provisional\)(?=; residual )' if lang == 'en' else r'（待确认）(?=，残差 )'
     return re.sub(r'(\bUSD/[A-Z]{3} [+-]\d+\.\d+ bp)' + annotation,
                   r'\1', brief['text'][lang])
@@ -118,7 +121,7 @@ def email_text(brief, lang):
 def payload(settings, brief, audio, lang):
     zh = lang == 'zh'
     title = ('外汇简报 ' if zh else 'FX briefing ')+brief['date']
-    body = escape(email_text(brief, lang))
+    body = '</p><p>'.join(escape(p) for p in email_text(brief, lang).split('\n\n') if p.strip())
     intro = ('本期为开机后补发。' if zh else 'This edition was prepared after the host became available.') if brief['mode']=='catchup' else ''
     text = f'<h1>{escape(title)}</h1><p>{intro}</p><p>{body}</p>'
     calendar = brief.get('calendar') or {}

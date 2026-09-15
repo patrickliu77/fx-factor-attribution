@@ -82,16 +82,21 @@ export function briefingHtml(brief,{embedded=false,runDetails=''}={}) {
   }).join('');
   const editionLabel=catchup ? copy('Catch-up briefing','补发简报') : formal ? copy('Morning briefing','文字晨报') : copy('Text briefing preview','文字简报预览');
   const text=brief.text?.[lang] || brief.text?.en || '';
+  const recap=brief.recap?.version==='market-recap-v1' ? brief.recap.text?.[lang] : '';
   // Formatting only: keep the saved wording and numbers, including provisional labels.
   const paragraphs=text.split(/(?=USD\/[A-Z]{3}(?: [+-]\d|[:：]))/u).map(p=>p.trim()).filter(Boolean);
+  const original=paragraphs.map(p=>`<p>${esc(p)}</p>`).join('');
+  const warnings=[...new Set(brief.warnings || [])].filter(w=>w!=='Provisional attribution is included and labelled.')
+    .map(w=>`<p class="hint brief-warning">${esc(warningText(w))}</p>`).join('');
   return `<section class="brief-preview col gap14" data-briefing-state="${esc(brief.state || 'preview')}" data-briefing-mode="${esc(brief.mode)}">${embedded ? '' : `<h2 class="sec">${editionLabel} ${esc(brief.date || '')}</h2>`}
-    <p class="brief-asof"${embedded && brief.attribution_as_of===brief.date ? ' hidden' : ''}>${copy('Data through','数据截至')} <time>${esc(brief.attribution_as_of || copy('unavailable','未知'))}</time></p>
+    <p class="brief-asof"${recap || embedded && brief.attribution_as_of===brief.date ? ' hidden' : ''}>${copy('Data through','数据截至')} <time>${esc(brief.attribution_as_of || copy('unavailable','未知'))}</time></p>
     ${audioHtml(brief)}
-      <div class="brief-copy">${paragraphs.map(p=>`<p>${esc(p)}</p>`).join('')}</div>
+      <div class="brief-copy">${recap ? recap.split('\n\n').filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('') : original}</div>
       ${calendarHtml(brief.calendar)}
     ${!formal && !catchup ? `<p class="hint">${copy('Validation preview, not a historical morning edition.','运行验收预览，不代表历史晨报。')}</p>` : ''}
-    ${[...new Set(brief.warnings || [])].filter(w=>w!=='Provisional attribution is included and labelled.').map(w=>`<p class="hint brief-warning">${esc(warningText(w))}</p>`).join('')}
+    ${recap ? '' : warnings}
     <details class="brief-source-details"><summary>${copy('Details and sources','详情与来源')}</summary>
+      ${recap ? `<h3>${copy('Saved attribution details','已保存归因详情')}</h3><div class="brief-quant-copy">${original}</div>${warnings}` : ''}
       <p class="stack-note">${editionLabel} ${esc(brief.date || '')}</p>${notes}
       <dl class="brief-status-grid"><div><dt>${copy('News collected by','新闻采集截至')}</dt><dd>${esc(brief.news_observed_by || copy('Unavailable','未知'))}</dd></div>
         <div><dt>${copy('Edition generated','稿件生成于')}</dt><dd>${esc(brief.generated_at || copy('Unavailable','未知'))}</dd></div></dl>

@@ -250,9 +250,11 @@ section can run automatically. Independent multi-agent orchestration remains fut
 The News page plays saved English and Chinese MP3s on request. Each recording has
 a transcript, edition date and measured duration. Code assembles the spoken
 script from frozen figures and checked news notes, without another language-model
-call. It covers the largest three moves, their leading contributions, residuals
-and research checks. New scripts can include a release-calendar item when it was
-present in the saved evidence.
+call. The recap leads with the dollar's overall direction and up to two standout
+percentage moves. It adds a brief model observation when a substantial move is
+poorly explained, and one short checked news item when available. A dated upcoming
+release can supply the watch point. Detailed contributions and residuals remain
+under Details and sources, alongside the original saved summary.
 
 The deployed recordings use Azure neural speech. English uses `en-US-GuyNeural`;
 Chinese uses `zh-CN-YunyangNeural`. This optional backend requires the operator's
@@ -260,7 +262,9 @@ own Speech resource, key and quota. Installed Windows voices remain a separate
 local option. An Azure failure never silently substitutes a Windows recording.
 See [speech setup](docs/AZURE_SPEECH_SETUP.md).
 
-Full recordings must measure one to three minutes. Successful files are reused;
+The new recap usually takes about half a minute to a minute. Its measured-duration
+gate is 15 to 120 seconds; older recording versions retain their 60 to 180 second
+gate. Successful files are reused;
 failed synthesis has a bounded retry budget. Text remains readable when audio
 fails. Each attachment has its own content hash and recording time. Older text
 and recordings are preserved when a new audio version is added.
@@ -278,7 +282,8 @@ that language's list. Brevo stores addresses and manages confirmation and
 unsubscribe links. The public repository and static site contain no subscriber
 list or service credentials.
 
-The daily email contains saved briefing text and a link to its recording. Before
+The daily email uses the same short recap as the new recording, with a link to the
+audio and full website details. Both come from the frozen edition. Before
 submitting a campaign, the local task verifies that the public edition, text and
 both audio files match the saved version. A persistent claim limits submission
 to one campaign per language and New York date. An ambiguous provider response

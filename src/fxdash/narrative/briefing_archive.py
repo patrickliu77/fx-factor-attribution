@@ -79,6 +79,15 @@ def public_copy(value):
     calendar = public_context(value.get('evidence') or {}, value.get('generated_at'))
     if calendar:
         result['calendar'] = calendar
+    # The short reading view leaves the original text and edition hash intact.
+    try:
+        from .audio_script import compose, RECAP_VERSION
+        from .recap import VERSION
+        result['recap'] = {'version': VERSION, 'text': {
+            lang: compose(value, value.get('evidence') or {}, lang, version=RECAP_VERSION)
+            for lang in ('en', 'zh')}}
+    except (KeyError, ValueError, TypeError, AttributeError):
+        pass  # Incomplete old archives keep their original readable text.
     return result
 
 

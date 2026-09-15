@@ -37,7 +37,8 @@ try {
       '不设固定出刊时刻','日期参考','待确认数字已标注']) assert.ok(!text.includes(phrase),phrase);
     assert.equal(await board.locator('[data-freshness]').isVisible(),false);
     assert.equal(await sources.getAttribute('open'),null);
-    assert.equal(await board.locator('.brief-asof').isVisible(),feed.briefing.attribution_as_of!==feed.briefing.date);
+    const hasRecap=!!feed.briefing?.recap?.text?.[lang];
+    assert.equal(await board.locator('.brief-asof').isVisible(),!hasRecap && feed.briefing.attribution_as_of!==feed.briefing.date);
     assert.equal(await page.locator('.news-header h1').count(),1);
     assert.equal(await page.locator('.storyhead').count(),0);
     assert.equal(await page.locator('.driver-context').evaluate(d=>d.open),false);
@@ -56,14 +57,20 @@ try {
       assert.equal(await cta.evaluate(e=>e===document.activeElement),true);
     }
     assert.equal(await page.locator('#mini-note').isVisible(),false);
-    // Affected figures retain their own provisional labels.
-    assert.ok(/provisional|待确认/i.test(await board.locator('[data-brief-content]').innerText()));
+    // The recap stays readable; exact figures and status labels stay in details.
+    if (hasRecap) {
+      assert.ok(!/\bbp\b|DOLLAR_LOO|CARRY_LOO|provisional|待确认/i.test(await board.locator('.brief-copy').innerText()));
+      assert.ok(/provisional|待确认/i.test(await sources.locator('.brief-quant-copy').textContent()));
+    } else {
+      assert.ok(/provisional|待确认/i.test(await board.locator('[data-brief-content]').innerText()));
+    }
     assert.equal(await page.locator('.brief-audio audio').getAttribute('preload'),'none');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:path.join(out,`news-${lang}-${theme}-${width}.png`),fullPage:true});
     const summary=sources.locator(':scope > summary');
     await summary.focus();await page.keyboard.press('Enter');
     assert.equal(await sources.evaluate(el=>el.open),true);
+    if (hasRecap) assert.ok(/provisional|待确认/i.test(await sources.locator('.brief-quant-copy').innerText()));
     assert.ok(/\d{4}-\d{2}-\d{2}T/.test(await sources.innerText()));
     assert.equal(await sources.locator('[data-brief-status]').count(),1);
     await sources.locator('.brief-run-details summary').click();

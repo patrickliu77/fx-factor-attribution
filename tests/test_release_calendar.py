@@ -91,6 +91,7 @@ def test_new_neural_script_uses_dated_calendar_without_rewriting_old_copy(tmp_pa
     from fxdash.narrative import audio_script as S
     path,edition,packet=saved(tmp_path)
     original=S.compose(edition,packet,'en',version=S.NEURAL_VERSION)
+    original_v4=S.compose(edition,packet,'en',version='audio-v4')
     context=C.capture(tmp_path,clock=lambda:moment(16,0),fetcher=lambda u:feed('20260109T133000Z'))
     packet['calendar']=context
     edition['evidence']=packet
@@ -98,5 +99,6 @@ def test_new_neural_script_uses_dated_calendar_without_rewriting_old_copy(tmp_pa
     text=S.compose(edition,packet,'en',version=S.NEURAL_VERSION)
     assert 'US calendar' in text and 'January 9' in text
     assert 'there is no economic calendar' not in text
-    assert 'there is no economic calendar' in original
+    assert 'On the US calendar' not in original
+    assert 'there is no economic calendar' in original_v4
     assert 'calendar' not in M.read_json(path)['evidence']

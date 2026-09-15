@@ -145,7 +145,7 @@ def test_email_view_keeps_frozen_website_text_and_data_status(tmp_path, lang):
     assert P.SITE + audio['url'] in rendered
     assert '{{ unsubscribe }}' in rendered
     # The formatter runs before escaping and does not turn news copy into HTML.
-    brief['text'][lang] += '<script>unsafe</script>'
+    brief['recap']['text'][lang] += '<script>unsafe</script>'
     rendered = S.payload(S.config(tmp_path), brief, audio, lang)['htmlContent']
     assert '&lt;script&gt;unsafe&lt;/script&gt;' in rendered and '<script>' not in rendered
 
@@ -186,6 +186,7 @@ def test_public_delivery_is_required_before_any_send(tmp_path,change):
 def test_caller_cannot_change_the_frozen_email_text(tmp_path):
     brief,verified=setup(tmp_path)
     brief['text']={'en':'injected','zh':'injected'}
+    brief['recap']={'version':'market-recap-v1','text':{'en':'injected','zh':'injected'}}
     class Provider:
         def create(self,value):
             assert 'injected' not in value['htmlContent']

@@ -7,7 +7,8 @@ from datetime import date, datetime
 from . import morning as M, briefing_archive as A
 
 VERSION = "audio-v1"
-NEURAL_VERSIONS = ("audio-v2", "audio-v3", "audio-v4")
+RECAP_VERSION = "audio-v5"
+NEURAL_VERSIONS = ("audio-v2", "audio-v3", "audio-v4", RECAP_VERSION)
 NEURAL_VERSION = NEURAL_VERSIONS[-1]
 VERSIONS = (VERSION, *NEURAL_VERSIONS)
 PAIRS = {
@@ -47,6 +48,12 @@ def signed_bp(value, lang):
     return f"{sign}{abs(value):.1f}" + ("个基点" if lang == "zh" else " basis points")
 
 
+def duration_bounds(version):
+    if version not in VERSIONS:
+        raise ValueError("unsupported_audio_version")
+    return (15, 120) if version == RECAP_VERSION else (60, 180)
+
+
 def compose(edition, packet, lang, *, version=VERSION):
     """Recheck the saved links. An old archive is never upgraded with live news."""
     if lang not in {"en", "zh"}:
@@ -76,6 +83,9 @@ def compose(edition, packet, lang, *, version=VERSION):
     if (M.local_time(generated).date().isoformat() != edition['date']
             or packet['as_of'] > edition['date']):
         raise ValueError("invalid_audio_edition_date")
+    if version == RECAP_VERSION:
+        from .recap import compose as recap
+        return recap(edition, packet, lang)
     zh = lang == "zh"
     concise = version in NEURAL_VERSIONS
     lines = [

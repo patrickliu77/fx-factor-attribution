@@ -78,8 +78,9 @@ def _language(root, brief, lang, version):
             return {"state": state if state in {"failed", "generating"} else "integrity_failed"}
         media, script = root / (lang + ".mp3"), root / (lang + ".txt")
         generated = datetime.fromisoformat(value["generated_at"])
+        lower, upper = S.duration_bounds(version)
         if (media.is_symlink() or script.is_symlink() or not generated.tzinfo
-                or not 60 <= S.number(value["duration_seconds"]) <= 180
+                or not lower <= S.number(value["duration_seconds"]) <= upper
                 or not 1000 <= media.stat().st_size <= 5_000_000 or script.stat().st_size > 21000
                 or value.get("engine") != ("azure-neural-speech" if version in S.NEURAL_VERSIONS else "windows-system-speech")
                 or not isinstance(value.get("voice"), str) or len(value["voice"]) > 120
@@ -177,9 +178,12 @@ def ensure(output_dir, path, *, clock=M.now_utc, renderer=None):
                         work = Path(work)
                         script, mp3 = work / (lang+".txt"), work / (lang+".mp3")
                         script.write_text(text, encoding="utf-8")
-                        info = (renderer or render)(script, mp3, lang)
+                        info = (renderer(script, mp3, lang) if renderer else
+                                render(script, mp3, lang, script_version=version) if version in S.NEURAL_VERSIONS else
+                                render(script, mp3, lang))
                         engine = "azure-neural-speech" if version == S.NEURAL_VERSION else "windows-system-speech"
-                        if (not 60 <= S.number(info["duration_seconds"]) <= 180 or not 1000 <= mp3.stat().st_size <= 5_000_000
+                        lower, upper = S.duration_bounds(version)
+                        if (not lower <= S.number(info["duration_seconds"]) <= upper or not 1000 <= mp3.stat().st_size <= 5_000_000
                                 or info.get("engine") != engine or not isinstance(info.get("voice"), str)):
                             raise ValueError("invalid_audio_output")
                         value.update({k: info[k] for k in ("engine", "voice", "duration_seconds")})

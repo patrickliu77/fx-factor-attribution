@@ -57,6 +57,25 @@ def test_saved_briefing_only_changes_presentation(lang):
 
 
 @pytest.mark.parametrize('lang',['en','zh'])
+def test_recap_leads_and_original_numbers_remain_in_closed_details(lang):
+    run_browser_module(r"""
+      const original='USD/AUD +90.3 bp (provisional); residual +15.5 bp.';
+      const recap='The dollar was broadly stronger.\n\nMore <context>.';
+      const brief={available:true,mode:'catchup',date:'2026-09-14',state:'numbers_only',
+        attribution_as_of:'2026-09-11',text:{en:original,zh:original},
+        recap:{version:'market-recap-v1',text:{en:recap,zh:recap}},notes:[],warnings:['Saved warning']};
+      const before=JSON.stringify(brief),html=C.briefingHtml(brief);
+      const details=html.indexOf('<details class="brief-source-details">');
+      assert.ok(html.indexOf('<p>The dollar was broadly stronger.</p>')<details);
+      assert.ok(html.indexOf(original)>details);
+      assert.ok(html.indexOf('Saved warning')>details);
+      assert.ok(!html.includes('<details class="brief-source-details" open'));
+      assert.ok(html.includes('More &lt;context&gt;.') && !html.includes('<context>'));
+      assert.equal(JSON.stringify(brief),before);
+    """,lang)
+
+
+@pytest.mark.parametrize('lang',['en','zh'])
 def test_empty_calendar_collapses_without_claiming_no_releases(lang):
     run_browser_module(r"""
       const context={date:'2026-09-13',state:'partial',observed_at:'2026-09-13T12:00:00Z',events:[]};

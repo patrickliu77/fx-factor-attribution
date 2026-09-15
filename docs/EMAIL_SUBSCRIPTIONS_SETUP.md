@@ -72,9 +72,11 @@ exported in the website API; only explicitly enabled form URLs are public.
 
 ## First real acceptance
 
-The email view omits per-pair `(provisional)` and `（待确认）` labels from the
-saved numeric summary. It retains all figures, signs and news text. The frozen
-edition, source data flags and dashboard labels are unchanged. A copy update does
+The email leads with the same short market recap as the new recording. The public
+verification check compares that recap as well as the original text and MP3s before
+campaign submission. Incomplete older archives can fall back to the numeric summary,
+omitting its per-pair `(provisional)` and `（待确认）` labels. Original summaries,
+data flags and source material remain in the website details. A copy update does
 not resend a date that already has a campaign submission record.
 
 Complete account setup before this check. Use only the owner's confirmed test

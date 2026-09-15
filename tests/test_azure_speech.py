@@ -206,7 +206,7 @@ def test_v3_omits_spoken_disclosure_and_preserves_v2_body(tmp_path, lang):
     assert new == old.replace(disclosure, '')
 
 
-@pytest.mark.parametrize('version', ['audio-v2', 'audio-v3'])
+@pytest.mark.parametrize('version', ['audio-v2', 'audio-v3', 'audio-v4'])
 def test_legacy_neural_is_playable_when_no_new_recording_exists(tmp_path, version):
     path, _, _ = saved(tmp_path)
     legacy_neural(tmp_path, path, version=version)
@@ -233,7 +233,7 @@ def test_opt_in_creates_new_version_without_replacing_legacy_or_frozen_text(tmp_
     prepare(tmp_path, path)
     old_root = B.sidecar(tmp_path, brief(path))
     original = {p: p.read_bytes() for p in old_root.rglob('*') if p.is_file()}
-    for version in ('audio-v2', 'audio-v3'):
+    for version in ('audio-v2', 'audio-v3', 'audio-v4'):
         legacy_root = legacy_neural(tmp_path, path, version=version)
         B.record_publication(tmp_path, brief(path), clock=lambda: moment(17, 0))
         original.update({p: p.read_bytes() for p in legacy_root.rglob('*') if p.is_file()})
@@ -250,10 +250,50 @@ def test_opt_in_creates_new_version_without_replacing_legacy_or_frozen_text(tmp_
     for lang in ('en', 'zh'):
         concise = S.compose(edition, packet, lang, version=S.NEURAL_VERSION)
         assert len(concise) < len(S.compose(edition, packet, lang))
-        assert ('minus 200.0 basis points' if lang == 'en' else '负200.0个基点') in concise
+        assert ('percent' if lang == 'en' else '%') in concise
         assert ('provisional' if lang == 'en' else '待确认') not in concise
-        assert ('log return' if lang == 'en' else '对数收益') in concise
-        assert ('no economic calendar' if lang == 'en' else '未接入经济日历') in concise
+        assert ('log return' if lang == 'en' else '对数收益') not in concise
+        assert ('no economic calendar' if lang == 'en' else '未接入经济日历') not in concise
+
+
+@pytest.mark.parametrize('duration', [15, 30, 120])
+def test_recap_profile_accepts_short_recordings(tmp_path, monkeypatch, duration):
+    mock_service(monkeypatch, duration=duration)
+    result = Z.render(transcript(tmp_path), tmp_path/'recap.mp3', 'en', script_version=S.RECAP_VERSION)
+    assert result['duration_seconds'] == duration
+
+
+@pytest.mark.parametrize('duration', [14, 121, float('nan')])
+def test_recap_profile_duration_is_still_bounded(tmp_path, monkeypatch, duration):
+    mock_service(monkeypatch, duration=duration)
+    with pytest.raises(RuntimeError):
+        Z.render(transcript(tmp_path), tmp_path/'recap.mp3', 'en', script_version=S.RECAP_VERSION)
+    assert not (tmp_path/'recap.mp3').exists()
+
+
+def test_legacy_duration_gate_and_unknown_profile_remain_strict(tmp_path, monkeypatch):
+    calls = mock_service(monkeypatch, duration=30)
+    with pytest.raises(RuntimeError):
+        Z.render(transcript(tmp_path), tmp_path/'old.mp3', 'en', script_version='audio-v4')
+    with pytest.raises(ValueError):
+        Z.render(transcript(tmp_path), tmp_path/'unknown.mp3', 'en', script_version='audio-v999')
+    with pytest.raises(ValueError):
+        Z.render(transcript(tmp_path), tmp_path/'preview.mp3', 'en', preview=True, script_version=S.RECAP_VERSION)
+    assert len(calls) == 1
+
+
+def test_ready_short_recap_is_served_but_does_not_relax_legacy_bounds(tmp_path, monkeypatch):
+    path, _, _ = saved(tmp_path)
+    old = legacy_neural(tmp_path, path, version='audio-v4')
+    monkeypatch.setenv('FXDASH_AUDIO', 'azure')
+    result = B.ensure(tmp_path, path, renderer=lambda *args: {**neural_renderer(*args), 'duration_seconds':30})
+    assert result['state'] == 'ready'
+    assert B.resolve_asset(tmp_path, 'catchup', brief(path)['date'], brief(path)['edition_hash'], S.RECAP_VERSION, 'en').is_file()
+    for lang in ('en', 'zh'):
+        value = M.read_json(old/(lang+'.json'))
+        value['duration_seconds'] = 30
+        M.atomic_json(old/(lang+'.json'), value)
+    assert B.inspect(tmp_path, brief(path), version='audio-v4')['state'] == 'unavailable'
 
 
 def test_unconfigured_opt_in_preserves_legacy_and_does_not_consume_attempt(tmp_path, monkeypatch):

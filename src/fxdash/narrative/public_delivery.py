@@ -21,7 +21,7 @@ COOLDOWN_SECONDS = 300
 def fetch(relative, limit):
     import requests
     if relative not in {'build.json', 'api/news.json'} and not re.fullmatch(
-            r'media/briefing/(edition|catchup)/\d{4}-\d{2}-\d{2}/[0-9a-f]{64}/audio-v[1234]/(en|zh)\.mp3', relative):
+            r'media/briefing/(edition|catchup)/\d{4}-\d{2}-\d{2}/[0-9a-f]{64}/audio-v[12345]/(en|zh)\.mp3', relative):
         raise ValueError('unapproved_public_asset')
     with requests.get(SITE+relative, timeout=(5, 12), allow_redirects=False, stream=True,
                       headers={'Cache-Control':'no-cache'}) as response:
@@ -51,7 +51,7 @@ def expectation(output_dir, brief):
              for lang, item in audio['languages'].items() if item.get('state') == 'ready'}
     return {'date':saved['date'], 'mode':saved['mode'], 'edition_hash':saved['edition_hash'],
             'text':saved['text'], 'attribution_as_of':saved['attribution_as_of'],
-            'calendar':saved.get('calendar'), 'media':media}
+            'calendar':saved.get('calendar'), 'recap':saved.get('recap'), 'media':media}
 
 
 def verify(output_dir, brief, *, fetcher=None, clock=M.now_utc, force=False):
@@ -84,7 +84,7 @@ def verify(output_dir, brief, *, fetcher=None, clock=M.now_utc, force=False):
                     payload = json.loads(get('api/news.json', 8_000_000))
                     current = payload.get('briefing') or {}
                     if any(current.get(k) != expected[k] for k in
-                           ('date','mode','edition_hash','text','attribution_as_of','calendar')):
+                           ('date','mode','edition_hash','text','attribution_as_of','calendar','recap')):
                         result['checks'].append('public_text_mismatch')
                     else:
                         result['text_verified'] = True

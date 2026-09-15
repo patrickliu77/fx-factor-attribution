@@ -29,21 +29,23 @@ try {
       assert.ok((await player.getAttribute('src')).includes('/'+process.env.FXDASH_EXPECT_AUDIO_VERSION+'/'));
     }
     assert.equal(await player.evaluate(a=>a.playbackRate),1,'The faster pace is in the MP3, not applied twice');
-    if (/\/audio-v[34]\//.test(await player.getAttribute('src'))) {
+    if (/\/audio-v[345]\//.test(await player.getAttribute('src'))) {
       const transcript=await panel.locator('.brief-audio-script').textContent();
       assert.ok(!/read by a synthetic voice|采用合成语音/.test(transcript));
       assert.ok((await panel.locator('.brief-audio-heading').textContent()).includes(lang==='en'?'Synthetic voice':'合成语音'));
-      if ((await player.getAttribute('src')).includes('/audio-v4/')) {
+      if (/\/audio-v[45]\//.test(await player.getAttribute('src'))) {
         assert.ok(!/These figures are provisional\.|这组数字仍待确认/.test(transcript));
       }
     }
     await player.evaluate(async a=>{window.__auditAudio=a;a.muted=true;await a.play();});
     await page.waitForFunction(()=>window.__auditAudio.currentTime>0.2);
     const actual=await player.evaluate(a=>({duration:a.duration,source:a.currentSrc,error:a.error?.code??null}));
-    assert.ok(actual.duration>=60 && actual.duration<=180);
+    const recap=actual.source.includes('/audio-v5/');
+    assert.ok(actual.duration>=(recap?15:60) && actual.duration<=(recap?120:180));
     assert.equal(actual.error,null);
-    await player.evaluate(a=>{a.pause();a.currentTime=30;});
-    await page.waitForFunction(()=>Math.abs(window.__auditAudio.currentTime-30)<1);
+    const seek=Math.min(30,Math.floor(actual.duration/2));
+    await player.evaluate((a,seek)=>{a.pause();a.currentTime=seek;},seek);
+    await page.waitForFunction(seek=>Math.abs(window.__auditAudio.currentTime-seek)<1,seek);
     await panel.locator('details').evaluate(d=>{d.open=true;});
     assert.ok((await panel.innerText()).includes(lang==='en'?'calendar':'日历'));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

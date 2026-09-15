@@ -42,7 +42,7 @@ automatically. The sample is clearly illustrative, with no claim to describe a
 real market day. A preview accepts measured durations from 10 to 60 seconds.
 
 English uses `en-US-GuyNeural` with `newscast`; Chinese uses `zh-CN-YunyangNeural`
-with `narration-professional`. New `audio-v4` recordings keep the `audio-v3` SSML rate `+33%`
+with `narration-professional`. New `audio-v5` recordings keep the `audio-v3` SSML rate `+33%`
 and 321 ms paragraph pauses, targeting about 1.4 times the previous `-5%` rate
 and 450 ms pauses. Actual durations depend on the voice and text. Synthetic-voice
 disclosure stays beside the player and is omitted from the new spoken introduction.
@@ -63,8 +63,10 @@ python -m fxdash.narrative.audio_briefing --latest
 ```
 
 This makes up to one synthesis request per missing language on this attempt, reads
-frozen evidence and saves new `audio-v4` attachments. It does not publish. Full
-recordings must measure 60 to 180 seconds. Failed cloud generation leaves text
+frozen evidence and saves new `audio-v5` recap attachments. It does not publish.
+The short recap typically takes about 30 to 60 seconds; its measured-duration gate
+is 15 to 120 seconds. Earlier audio versions retain the 60 to 180 second gate.
+Failed cloud generation leaves text
 available and does not substitute a Windows recording silently.
 
 After approving the full recording and the account quota, use
@@ -106,9 +108,26 @@ included in the request body.
 
 ## Existing recordings
 
-`audio-v1` (Windows), `audio-v2` and `audio-v3` remain immutable.
-The player selects `audio-v4` when present. Local media routes retain all four
+`audio-v1` (Windows), `audio-v2`, `audio-v3` and `audio-v4` remain immutable.
+The player selects `audio-v5` when present. Local media routes retain all five
 versions, and static exports retain verified versions for the editions included in
 that export. Previously emailed MP3 links keep their original recordings; an audio
 upgrade does not resend a briefing. Selecting
 `FXDASH_AUDIO=off` disables new synthesis without hiding already-saved files.
+
+## Recap selection
+
+The reading view and new spoken script share `market-recap-v1`, derived without a
+new language-model call. Log returns are converted to simple percentage changes
+with `100 * expm1(y)`, in the existing USD/XXX direction. Moves below 0.05% in
+magnitude are described as little changed. At least four meaningful gains or losses
+among the six pairs, with at most one opposite move, qualify as broadly stronger
+or weaker. Mixed sessions and quiet sessions have separate wording.
+
+The two largest absolute percentage moves may be quoted. At most one model gap is
+mentioned in plain language when the observed move is at least 0.1%, and the saved
+residual is at least 30 log-return bp and half the move's magnitude. This is an
+editorial filter, with no change to the attribution model or its residual definition.
+One complete short source-checked event can be included, followed by one upcoming
+dated calendar item or a conditional watch point. Missing news or calendar items
+do not generate filler. Original summaries and data flags remain in website details.

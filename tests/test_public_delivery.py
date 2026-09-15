@@ -39,7 +39,7 @@ def test_public_text_and_audio_match_without_changing_archives(tmp_path):
     assert P.verify(tmp_path,current,fetcher=lambda *a:pytest.fail('cooldown'),clock=lambda:moment(17,2))==result
 
 
-@pytest.mark.parametrize('bad',['build','text','audio_metadata','audio_bytes','calendar'])
+@pytest.mark.parametrize('bad',['build','text','audio_metadata','audio_bytes','calendar','recap'])
 def test_incomplete_public_deployment_never_passes(tmp_path,bad):
     _,current,responses=fixture(tmp_path)
     if bad=='build':
@@ -49,6 +49,7 @@ def test_incomplete_public_deployment_never_passes(tmp_path,bad):
     else:
         body=json.loads(responses['api/news.json'])
         if bad=='text': body['briefing']['text']['en']='wrong'
+        if bad=='recap': body['briefing']['recap']['text']['en']='wrong'
         if bad=='calendar': body['briefing']['calendar']={'events':['invented']}
         if bad=='audio_metadata': body['briefing']['audio']['languages']['en']['url']='https://evil.test/track'
         responses['api/news.json']=json.dumps(body).encode()
@@ -87,7 +88,7 @@ def test_saved_observation_is_read_only_and_keeps_its_real_date(tmp_path):
     assert observed['observed_at']==moment(17,1).isoformat() and observed['state']=='verified'
 
 
-@pytest.mark.parametrize('version', ['audio-v1', 'audio-v2', 'audio-v3', 'audio-v4'])
+@pytest.mark.parametrize('version', ['audio-v1', 'audio-v2', 'audio-v3', 'audio-v4', 'audio-v5'])
 @pytest.mark.parametrize('lang', ['en', 'zh'])
 def test_public_fetch_accepts_all_saved_audio_versions(monkeypatch, version, lang):
     import requests
@@ -106,7 +107,7 @@ def test_public_fetch_accepts_all_saved_audio_versions(monkeypatch, version, lan
 
 @pytest.mark.parametrize('relative', [
     'https://evil.test/en.mp3',
-    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v5/en.mp3',
+    f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v6/en.mp3',
     f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v3/en.mp3?x=1',
     f'media/briefing/catchup/2026-01-08/{"a"*64}/audio-v3/../en.mp3',
 ])

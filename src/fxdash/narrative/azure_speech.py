@@ -61,7 +61,11 @@ def ssml(text, lang):
             f'<prosody rate="+33%">{body}</prosody></mstts:express-as></voice></speak>')
 
 
-def render(transcript: Path, destination: Path, lang: str, *, preview=False):
+def render(transcript: Path, destination: Path, lang: str, *, preview=False, script_version=None):
+    from .audio_script import duration_bounds
+    if preview and script_version is not None:
+        raise ValueError('conflicting_audio_profiles')
+    bounds = duration_bounds(script_version) if script_version is not None else (60, 180)
     key, region = credentials()
     if destination.exists():
         raise ValueError("audio_destination_exists")
@@ -105,7 +109,7 @@ def render(transcript: Path, destination: Path, lang: str, *, preview=False):
         if measured.returncode:
             raise RuntimeError("audio_probe_failed")
         duration = float(json.loads(measured.stdout)["format"]["duration"])
-        lower, upper = (10, 60) if preview else (60, 180)
+        lower, upper = (10, 60) if preview else bounds
         if not lower <= duration <= upper:
             raise ValueError("audio_duration_out_of_bounds")
         return {"engine": "azure-neural-speech", "voice": VOICES[lang][1],

@@ -1,7 +1,7 @@
 import {getLang} from './i18n.js';
 const copy=(en,zh)=>getLang()==='zh'?zh:en;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const mediaPath=/^media\/briefing\/(edition|catchup)\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\/audio-v[1234]\/(en|zh)\.mp3$/;
+const mediaPath=/^media\/briefing\/(edition|catchup)\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\/audio-v[12345]\/(en|zh)\.mp3$/;
 const recordingTime=stamp=>{
   const date=new Date(stamp);
   if (!Number.isFinite(date.getTime())) return copy('Time unavailable','时间不可用');
