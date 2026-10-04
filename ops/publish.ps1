@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the static site and force-push it to the public repository's gh-pages branch.
+    Build the static site and publish it to the public repository's gh-pages branch.
 
 .DESCRIPTION
     The third scheduled task, fxdash-publish, 20:45 local, after the 19:30 pipeline
@@ -8,11 +8,11 @@
     data/cache/, writes only site/, and never touches either status.json. A failure
     here is this task's own; the other two tasks and their heartbeats are unaffected.
 
-    site/ is rebuilt from nothing on every run and pushed as a single commit with
-    --force to an orphan branch, so the published history never grows. GitHub Pages
-    serves that branch; the page reads build.json and computes its own age.
+    site/ is replaced after a complete build and pushed as a single commit with
+    an explicit remote-head lease, so concurrent publishers cannot overwrite each
+    other. GitHub Pages serves that branch; the page reads build.json for its age.
 
-    -WhatIf builds the site (local, harmless) and skips the push.
+    -WhatIf builds and validates the site locally and skips Git and public probes.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File ops\publish.ps1 -WhatIf
@@ -51,6 +51,28 @@ function Resolve-Python([string]$Explicit) {
     }
     return @{ Path = "$env:USERPROFILE\miniconda3\python.exe"; Source = "default location" }
 }
+
+function Invoke-CheckedGit([string[]]$Arguments) {
+    $output = @(& git @Arguments)
+    $gitExitCode = $LASTEXITCODE
+    if ($gitExitCode -ne 0) {
+        throw "git $($Arguments[0]) failed with exit code $gitExitCode"
+    }
+    return $output
+}
+
+function Read-RemoteHead([string]$Reference) {
+    $rows = @(Invoke-CheckedGit -Arguments @("ls-remote", "--refs", "--", $Remote, $Reference))
+    # A successful, empty response means the branch has not been created yet.
+    # A failed probe must never be converted into an empty expected lease.
+    if ($rows.Count -eq 0) { return "" }
+    $pattern = '^([0-9a-f]{40}|[0-9a-f]{64})\t' + [regex]::Escape($Reference) + '$'
+    if ($rows.Count -ne 1 -or $rows[0] -notmatch $pattern) {
+        throw "git ls-remote returned an invalid or ambiguous head for $Reference"
+    }
+    return $Matches[1]
+}
+
 $resolved = Resolve-Python $Python
 $Python = $resolved.Path
 
@@ -62,6 +84,10 @@ if (-not (Test-Path $Python)) {
     throw "Python not found: $Python. Pass -Python <path> to point at an interpreter with this project's dependencies installed."
 }
 if (-not $Site) { $Site = Join-Path $repo "site" }
+# The builder resolves relative output paths under the repository. Use that
+# same absolute path for the lock, manifest reads and every Git operation.
+if (-not [System.IO.Path]::IsPathRooted($Site)) { $Site = Join-Path $repo $Site }
+$Site = [System.IO.Path]::GetFullPath($Site)
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 Write-Host "[$stamp] publish start"
@@ -73,7 +99,7 @@ Write-Host "Remote : $Remote ($Branch)"
 # ------------------------------------------------------------------ build
 # The morning dispatcher and evening task share site/. A second writer must not
 # remove files while the first writer is building or committing that directory.
-$mutexBytes = [System.Text.Encoding]::UTF8.GetBytes([System.IO.Path]::GetFullPath($Site).ToLowerInvariant())
+$mutexBytes = [System.Text.Encoding]::UTF8.GetBytes($Site.ToLowerInvariant())
 $mutexHash = [System.Security.Cryptography.SHA256]::Create()
 $mutexSuffix = [System.BitConverter]::ToString($mutexHash.ComputeHash($mutexBytes)).Replace("-", "")
 $mutexHash.Dispose()
@@ -99,24 +125,42 @@ $manifest = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $manifest.files -or $manifest.files.Count -lt 1) { throw "build.json lists no api files" }
 Write-Host "Built  : $($manifest.built_at)  as_of $($manifest.as_of)  $($manifest.files.Count) api files"
 
+# Reuse the cloud publisher's read-only identity and media-integrity gate. This
+# also runs under -WhatIf; inspecting a candidate never publishes or sends mail.
+Push-Location $repo
+try {
+    & $Python -m fxdash.cloud.publish --candidate $Site
+    if ($LASTEXITCODE -ne 0) { throw "candidate validation failed with exit code $LASTEXITCODE" }
+} finally {
+    Pop-Location
+}
+
 # ------------------------------------------------------------------- push
 # A fresh repository every run: one commit, no history, nothing carried over.
-if ($PSCmdlet.ShouldProcess("$Remote $Branch", "Force-push the site")) {
+if ($PSCmdlet.ShouldProcess("$Remote $Branch", "Publish the site with a remote-head lease")) {
     $env:GCM_INTERACTIVE = "Never"
     $env:GIT_TERMINAL_PROMPT = "0"
     Push-Location $Site
     try {
-        git init -q
-        if ($LASTEXITCODE -ne 0) { throw "git init failed" }
-        git symbolic-ref HEAD "refs/heads/$Branch"
-        git add -A
-        if ($LASTEXITCODE -ne 0) { throw "git add failed" }
-        git -c "user.name=$AuthorName" -c "user.email=$AuthorEmail" commit -q -m "site build $($manifest.built_at)"
-        if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
-        git push --force --quiet $Remote "HEAD:refs/heads/$Branch"
-        if ($LASTEXITCODE -ne 0) { throw "git push failed with exit code $LASTEXITCODE" }
-        $head = git rev-parse --short HEAD
-        $remoteHead = git ls-remote $Remote "refs/heads/$Branch"
+        $reference = "refs/heads/$Branch"
+        Invoke-CheckedGit -Arguments @("check-ref-format", $reference) | Out-Null
+        Invoke-CheckedGit -Arguments @("init", "-q") | Out-Null
+        Invoke-CheckedGit -Arguments @("symbolic-ref", "HEAD", $reference) | Out-Null
+        Invoke-CheckedGit -Arguments @("add", "-A") | Out-Null
+        Invoke-CheckedGit -Arguments @("-c", "user.name=$AuthorName", "-c", "user.email=$AuthorEmail",
+                                      "commit", "-q", "-m", "site build $($manifest.built_at)") | Out-Null
+        $headRows = @(Invoke-CheckedGit -Arguments @("rev-parse", "--verify", "HEAD"))
+        if ($headRows.Count -ne 1 -or $headRows[0] -notmatch '^(?:[0-9a-f]{40}|[0-9a-f]{64})$') {
+            throw "git rev-parse returned an invalid full commit"
+        }
+        $head = $headRows[0]
+        $expectedHead = Read-RemoteHead $reference
+        Invoke-CheckedGit -Arguments @("push", "--quiet", "--force-with-lease=$($reference):$expectedHead",
+                                      "--", $Remote, "HEAD:$reference") | Out-Null
+        $remoteHead = Read-RemoteHead $reference
+        if ($remoteHead -cne $head) {
+            throw "Publication is unconfirmed: the remote head differs from the local commit."
+        }
         Write-Host "Pushed : $head -> $Branch"
         Write-Host "Remote : $remoteHead"
     } finally {

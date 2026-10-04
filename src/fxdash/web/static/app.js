@@ -44,6 +44,11 @@ const state = {
   pulse: null,
 };
 const charts = new Map();
+const priceRequests = new Map();
+let renderGeneration = 0;
+let runtimeRequest = 0;
+let pulseRequest = 0;
+let tapeRequest = 0;
 
 /* ------------------------------------------------------------------ utils */
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
@@ -51,15 +56,35 @@ const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
 
 // Static build or live server. A static build (fxdash.web.build) ships build.json
 // next to index.html and every API response as a file under api/; the live server
-// has neither. Detected once at start-up, so one source serves both. All URLs in
+// has neither. Cache a successful detection; temporary failures are retried by
+// later API requests, so one source serves both. All URLs in
 // this file are relative for the same reason: the live server sits at the root,
 // the published site sits under a project path.
-const build = { mode: "live", info: null };
+const build = { mode: "unknown", info: null };
+let buildRequest = null;
+let headerMode = null;
+let headerRequest = null;
 async function detectBuild() {
-  try {
-    const res = await fetch("build.json", { cache: "no-store" });
-    if (res.ok) { build.info = await res.json(); build.mode = "static"; }
-  } catch (e) { /* no build.json: live server */ }
+  if (build.mode !== "unknown") return;
+  if (!buildRequest) {
+    buildRequest = (async () => {
+      try {
+        const res = await fetch("build.json", { cache: "no-store" });
+        if (build.mode !== "unknown") return;
+        if (res.status === 404) { build.mode = "live"; return; }
+        if (!res.ok) throw new Error();
+        const info = await res.json();
+        if (!info || typeof info !== "object" || Array.isArray(info)) throw new Error();
+        build.info = info;
+        build.mode = "static";
+      } catch {
+        throw Object.assign(new Error(getLang() === "zh"
+          ? "页面信息暂不可用，可以重试。"
+          : "Site information is temporarily unavailable. You can retry."), { retryBuild: true });
+      }
+    })().finally(() => { buildRequest = null; });
+  }
+  return buildRequest;
 }
 // File name for one API request in a static build: drop the leading slash, append
 // the query parameters sorted by key as ".key-value", then ".json". The same rule
@@ -73,6 +98,7 @@ function staticPath(path) {
   return "api" + p + params.map(([k, v]) => `.${k}-${v}`).join("") + ".json";
 }
 async function api(path) {
+  await detectBuild();
   const url = build.mode === "static" ? staticPath(path) : "api" + path;
   const res = await fetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(res.status + " " + path);
@@ -100,7 +126,7 @@ const ageHours = (text) => {
   return ms == null ? null : (Date.now() - ms) / 3.6e6;
 };
 const stateOf = (age, warn, crit) =>
-  age == null ? "red" : age > crit ? "red" : age > warn ? "yellow" : "green";
+  age == null || age < 0 ? "red" : age > crit ? "red" : age > warn ? "yellow" : "green";
 const HEARTBEAT_DEFAULTS = { warn: 26, crit: 72 };
 // "2026-09-04T20:45:03-05:00" -> "2026-09-04 20:45 UTC-05:00"; shown in the stamp's
 // own zone rather than converted, so two readers in two zones see the same text
@@ -160,10 +186,12 @@ function channels(eventKind) {
 
 /* ------------------------------------------------------------------ ticker tape */
 async function renderTape() {
+  const request = ++tapeRequest;
   const tape = document.getElementById("tape");
   const session = document.getElementById("session");
   let data;
   try { data = await api("/market/ticker"); } catch (e) { data = null; }
+  if (request !== tapeRequest) return;
   state.quotes = data && data.available ? data : null;
 
   if (data && data.available && data.session_date) {
@@ -192,6 +220,20 @@ async function renderTape() {
   tape.hidden = false;
 }
 
+// A retry can identify a static build after startup hid these header elements.
+// Refresh them once for the resolved mode, sharing work across rapid navigation.
+async function refreshResolvedHeader() {
+  if (build.mode === "unknown" || headerMode === build.mode) return;
+  if (!headerRequest) {
+    const mode = build.mode;
+    headerRequest = Promise.all([renderTape(), renderPulse()]).then(() => {
+      renderBuilt();
+      headerMode = mode;
+    }).finally(() => { headerRequest = null; });
+  }
+  return headerRequest;
+}
+
 /* ------------------------------------------------------------------ pulse */
 // Two chips live permanently in the header and nowhere else (2026-09-04 ruling):
 // NARRATIVE, the narrative layer's heartbeat, and in a static build BUILT, the
@@ -205,11 +247,13 @@ async function renderTape() {
 // is decided by the market; five quiet days are a normal state, and judging colour
 // on it would mean alarming every day.
 async function renderPulse() {
+  const request = ++pulseRequest;
   const el = document.getElementById("pulse");
   let s = state.pulse;
   if (build.mode === "live" || !s) {
     try { s = await api("/narrative/status"); } catch (e) { s = null; }
   }
+  if (request !== pulseRequest) return;
   if (!s) {
     el.dataset.state = "red";
     el.innerHTML = `<i></i>${esc(t("pulse.label"))} ${esc(t("pulse.unreachable"))}`;
@@ -245,6 +289,7 @@ function renderBuilt() {
 
 function ageText(h) {
   if (h == null) return t("pulse.never");
+  if (h < 0) return t("pulse.clock");
   return h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h`
     : `${Math.round(h / 24)}d`;
 }
@@ -255,7 +300,9 @@ function ageText(h) {
 // fresh on a page nobody is refreshing. Every age is computed in the browser.
 function healthPanel() {
   const s = state.pulse;
-  const p = state.pipeline || {};
+  const p = state.runtime || state.pipeline || {};
+  const lastLive = p.runtime?.last_success_at ?? p.heartbeat?.last_live_success ?? p.last_live_success;
+  const reasons = Array.isArray(p.reasons) ? p.reasons : [];
   const warn = (s && s.warn_hours) || HEARTBEAT_DEFAULTS.warn;
   const crit = (s && s.crit_hours) || HEARTBEAT_DEFAULTS.crit;
   const dot = (st) => `<i style="background:var(--${
@@ -274,8 +321,8 @@ function healthPanel() {
     : `<div class="health__row">${dot("none")} ${esc(t("pulse.build"))}
         <span>${esc(t("pulse.build.live"))}</span></div>`;
   return `<div class="health">
-    ${row(t("pulse.pipeline"), p.last_live_success,
-      p.reasons && p.reasons.length ? p.reasons.join("; ") : "", runtimeState(state.runtime).tone)}
+    ${row(t("pulse.pipeline"), lastLive,
+      reasons.join("; "), runtimeState(state.runtime).tone)}
     ${s ? row(t("pulse.label"), s.last_run,
       `${t("pulse.thresholds", { warn, crit })}, ${s.days_on_record} ${t("pulse.days")}`)
       : `<div class="health__row">${dot("red")} ${esc(t("pulse.label"))}
@@ -530,7 +577,7 @@ function headlineExpandHtml(h, key) {
   </div>`;
 }
 
-async function pageNews(view) {
+async function pageNews(view, isCurrent) {
   // The pipeline heartbeat for the health panel rides on the same overview request
   // the FX page makes (canonical window and model), so a static build has the file
   const win = (state.meta && state.meta.default_window) || 126;
@@ -539,6 +586,7 @@ async function pageNews(view) {
     api("/news"),
     api(`/overview?window=${win}&model=${model}`).catch(() => null),
   ]);
+  if (!isCurrent()) return;
   state.pipeline = overview ? overview.status_digest : null;
   const pairs = (state.meta.pairs || []).slice()
     .sort((a, b) => PAIR_ORDER.indexOf(a) - PAIR_ORDER.indexOf(b));
@@ -967,7 +1015,7 @@ function helpGridHtml() {
   </div>`;
 }
 
-async function pageFX(view) {
+async function pageFX(view, isCurrent) {
   // The FX page is pinned to the canonical basis OLS@126 (2026-09-02 user ruling:
   // the switches stay on Attribution only)
   const win = (state.meta && state.meta.default_window) || 126;
@@ -976,6 +1024,7 @@ async function pageFX(view) {
   const [overview, daily, attribution] = await Promise.all([
     api("/overview" + qs), api("/narrative/daily" + qs), api("/attribution/weekly" + qs),
   ]);
+  if (!isCurrent()) return;
   const counts = attribution.story_counts || {};
   const byPair = {};
   overview.pairs.forEach((p) => { byPair[p.pair] = p; });
@@ -987,6 +1036,7 @@ async function pageFX(view) {
     try { feed = await api(`/pairs/${state.openPair}/news`); }
     catch (e) { feed = { items: [] }; }
   }
+  if (!isCurrent()) return;
 
   const robust = overview.robustness || {};
   const grid = [];
@@ -1027,14 +1077,16 @@ async function pageFX(view) {
       state.pairNewsViews[pair] = saved;
     });
   }
+  let panelRequest = 0;
   async function openPairPanel(pair) {
+    const request = ++panelRequest;
     view.querySelectorAll(".pairnews").forEach((n) => n.remove());
     view.querySelectorAll("[data-card]").forEach((c) =>
       c.setAttribute("aria-expanded", String(!!pair && c.dataset.card === pair)));
     if (!pair) return;
     let f;
     try { f = await api(`/pairs/${pair}/news`); } catch (e) { f = { items: [] }; }
-    if (state.openPair !== pair) return; // clicked elsewhere meanwhile; drop it
+    if (!isCurrent() || request !== panelRequest || state.openPair !== pair) return;
     const i = pairs.indexOf(pair);
     const anchorPair = (i % 2 === 0 && i + 1 < pairs.length) ? pairs[i + 1] : pairs[i];
     const anchor = view.querySelector(`[data-card="${anchorPair}"]`);
@@ -1091,10 +1143,15 @@ async function drawPrice(pair) {
   const yaxis = document.querySelector(`[data-yaxis="${pair}"]`);
   const xaxis = document.querySelector(`[data-xaxis="${pair}"]`);
   if (!box) return;
+  const request = (priceRequests.get(pair) || 0) + 1;
+  priceRequests.set(pair, request);
   const range = state.ranges[pair] || "6m";
   let data;
   try { data = await api(`/market/series/${pair}?range=${range}`); }
   catch (e) { data = { available: false, reason: "no_cache" }; }
+  // A slower earlier range, or a chart from a previous page, must not dispose
+  // the current chart or replace the latest selection with its old response.
+  if (!box.isConnected || priceRequests.get(pair) !== request) return;
 
   const old = charts.get("px:" + pair);
   if (old) { old.dispose(); charts.delete("px:" + pair); }
@@ -1133,9 +1190,10 @@ function divergingRow(row, order, half) {
   return `<div class="diverge"><div class="diverge__zero"></div>${html}</div>`;
 }
 
-async function pageAttribution(view) {
+async function pageAttribution(view, isCurrent) {
   const qs = `?window=${state.window}&model=${state.model}${state.period === 5 ? "" : "&days=" + state.period}`;
   const data = await api("/attribution/weekly" + qs);
+  if (!isCurrent()) return;
   const order = data.bucket_order;
   const rows = data.pairs.slice()
     .sort((a, b) => PAIR_ORDER.indexOf(a.pair) - PAIR_ORDER.indexOf(b.pair));
@@ -1266,12 +1324,13 @@ async function pageAttribution(view) {
   });
 }
 
-async function pageResearch(view, pair) {
+async function pageResearch(view, pair, isCurrent) {
   if (!state.meta.pairs.includes(pair)) throw new Error("Unknown currency pair");
   const [data, comparison] = await Promise.all([
     api(`/pairs/${pair}/series?window=${state.window}&model=${state.model}&observations=252`),
     api(`/research/comparison?window=${state.window}`).catch(() => null),
   ]);
+  if (!isCurrent()) return;
   view.innerHTML = researchHtml(data, label(pair), controls(), comparison);
   bindControls(view);
   if (!data.dates.length) return;
@@ -1308,11 +1367,13 @@ function ensureMathJax() {
   return mathjaxLoading;
 }
 
-async function pageMethodology(view) {
+async function pageMethodology(view, isCurrent) {
   view.innerHTML = methodologyHtml();
   try {
     await ensureMathJax();
+    if (!isCurrent()) return;
     await window.MathJax.startup.promise;
+    if (!isCurrent()) return;
     await window.MathJax.typesetPromise([view]);
   } catch (e) {
     // If MathJax fails, keep the raw TeX text: readable, just not pretty. A
@@ -1322,6 +1383,8 @@ async function pageMethodology(view) {
 
 /* ------------------------------------------------------------------ router */
 async function render() {
+  const generation = ++renderGeneration;
+  const isCurrent = () => generation === renderGeneration;
   const view = document.getElementById("view");
   view.querySelectorAll('audio').forEach(player=>player.pause());
   const route = (location.hash || "#/fx").slice(1);
@@ -1330,32 +1393,51 @@ async function render() {
   renderFooter();
   view.innerHTML = `<p class="empty">${esc(t("loading"))}</p>`;
   await renderRuntime();
+  if (!isCurrent()) return;
   try {
-    if (!state.meta) state.meta = await api("/meta");
+    if (!state.meta) {
+      const meta = await api("/meta");
+      if (!isCurrent()) return;
+      state.meta = meta;
+    }
+    await refreshResolvedHeader();
+    if (!isCurrent()) return;
     if (state.meta.windows && !state.meta.windows.includes(state.window)) {
       state.window = state.meta.default_window || state.meta.windows[0];
     }
     if (state.meta.models && !state.meta.models.includes(state.model)) {
       state.model = state.meta.default_model || state.meta.models[0];
     }
-    if (route.startsWith("/news")) await pageNews(view);
-    else if (route.startsWith("/attribution")) await pageAttribution(view);
-    else if (route.startsWith("/methodology")) await pageMethodology(view);
-    else if (route.startsWith("/research/")) await pageResearch(view, route.split("/")[2]);
-    else await pageFX(view);
+    if (route.startsWith("/news")) await pageNews(view, isCurrent);
+    else if (route.startsWith("/attribution")) await pageAttribution(view, isCurrent);
+    else if (route.startsWith("/methodology")) await pageMethodology(view, isCurrent);
+    else if (route.startsWith("/research/")) await pageResearch(view, route.split("/")[2], isCurrent);
+    else await pageFX(view, isCurrent);
   } catch (err) {
-    view.innerHTML = `<p class="empty">${esc(t("error"))} <code>${esc(err.message)}</code></p>`;
+    if (!isCurrent()) return;
+    view.innerHTML = `<p class="empty">${esc(t("error"))} <code>${esc(err.message)}</code></p>`
+      + (err.retryBuild ? `<button type="button" data-build-retry>${getLang() === "zh" ? "重试" : "Retry"}</button>` : "");
+    view.querySelector('[data-build-retry]')?.addEventListener('click', render);
   }
 }
 
 let resizeTimer;
+function refreshHealth() {
+  const health=document.querySelector('.health');
+  if (health) health.outerHTML=healthPanel();
+  renderBuilt();
+}
 async function renderRuntime() {
   const el=document.getElementById('runtime-status');
   if (!el) return;
-  const open=el.querySelector('details')?.open;
+  const request=++runtimeRequest;
+  let data=state.runtime;
   if (build.mode==='live' || !state.runtime) {
-    try { state.runtime=await api('/status'); } catch { state.runtime=null; }
+    try { data=await api('/status'); } catch { data=null; }
   }
+  if (request!==runtimeRequest) return;
+  state.runtime=data;
+  const open=el.querySelector('details')?.open;
   el.innerHTML=runtimeHtml(state.runtime,build);
   el.querySelector('details').open=!!open;
   el.hidden=false;
@@ -1367,23 +1449,21 @@ window.addEventListener("resize", () => {
 window.addEventListener("hashchange", render);
 
 (async function start() {
-  await detectBuild();
+  try { await detectBuild(); } catch { /* The route shows a retryable error. */ }
+  const initialHeaderMode = build.mode;
   setLang(getLang());
   applyTheme(getTheme());
   await renderTape();
   await renderPulse();
   renderBuilt();
+  headerMode = initialHeaderMode;
   await render();
   // Every five minutes: the live server may have new quotes and a new heartbeat
   // file; a static build has neither, so only the ages are recomputed there
   setInterval(() => {
     refreshBriefingStatus();
-    renderRuntime().then(()=>{
-      const health=document.querySelector('.health');
-      if (health) health.outerHTML=healthPanel();
-    });
+    renderRuntime().then(refreshHealth);
     if (build.mode === "live") renderTape();
-    renderPulse();
-    renderBuilt();
+    renderPulse().then(refreshHealth);
   }, 5 * 60 * 1000);
 })();

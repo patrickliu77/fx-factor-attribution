@@ -14,7 +14,7 @@ async function ready(page) {
   await page.waitForFunction(() => {
     const date = document.querySelector('[data-mini-asof]');
     return date && !/Loading|正在/.test(date.textContent);
-  }, {timeout:60000});
+  }, undefined, {timeout:60000});
   await page.evaluate(() => document.fonts.ready);
 }
 async function inspect(page) {

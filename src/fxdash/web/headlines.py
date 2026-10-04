@@ -106,6 +106,8 @@ class HeadlineBoard:
         self._fetcher = fetcher
         self._lock = threading.Lock()
         self._cached: dict | None = None
+        # Internal refresh-attempt clock. A failed refresh keeps the saved
+        # board's fetched_at, but still waits one TTL before trying again.
         self._stamp = 0.0
 
     # ------------------------------------------------------------------- fetch
@@ -177,15 +179,15 @@ class HeadlineBoard:
             if fresh:
                 return self._cached
             board = self._refresh(sorted(pairs))
-            if board["items"] or self._cached is None:
+            if board["items"] or not board["errors"] or self._cached is None:
                 self._cached = board
-                self._stamp = time.monotonic()
             else:
-                # everything failed this round: keep serving the previous cache
-                # and carry the new errors out
+                # No usable news and fetch errors: keep the previous cache.
+                # An error-free empty feed is a successful new board.
                 log.warning("headline fetch failed, reusing the last cache: %s",
                             board["errors"])
                 self._cached = dict(self._cached, errors=board["errors"], stale=True)
+            self._stamp = time.monotonic()
             return self._cached
 
     def for_pair(self, pairs: list[str], pair: str, cap: int = 5) -> list[dict]:

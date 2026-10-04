@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -248,6 +249,10 @@ def heartbeat_state(age_hours: float | None) -> tuple[str, list[str]]:
     """
     if age_hours is None:
         return "red", ["narrative layer has never run"]
+    if not math.isfinite(age_hours):
+        return "red", ["narrative heartbeat age is unreadable"]
+    if age_hours < 0:
+        return "red", ["narrative heartbeat time is ahead of observation; check the system clock"]
     if age_hours > HEARTBEAT_CRIT_HOURS:
         return "red", [f"{age_hours:.1f} hours since last run, over {HEARTBEAT_CRIT_HOURS}"]
     if age_hours > HEARTBEAT_WARN_HOURS:
@@ -327,7 +332,14 @@ def read_status(root: Path | None = None) -> dict:
     if not path.exists():
         return {"state": "red", "reasons": ["narrative status.json does not exist"],
                 "last_run": None, "last_published": None, "age_hours": None}
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            return value
+    except (OSError, ValueError, UnicodeError):
+        pass
+    return {"state": "red", "reasons": ["narrative status.json unreadable"],
+            "last_run": None, "last_published": None, "age_hours": None}
 
 
 def now_stamp() -> str:

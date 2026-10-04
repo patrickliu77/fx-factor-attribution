@@ -835,6 +835,57 @@ def test_headline_board_dedupes_across_pairs_and_caches(monkeypatch):
     assert stale["errors"]
 
 
+def test_failed_headline_refresh_cools_down_for_ttl_and_then_recovers(monkeypatch):
+    from fxdash.config import PAIRS
+    from fxdash.web import headlines as H
+
+    clock = [10000.0]
+    failing = [False]
+    calls = []
+    monkeypatch.setattr(H.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(H, "_now_iso", lambda: (
+        pd.Timestamp("2026-09-08T00:00:00Z") + pd.Timedelta(seconds=clock[0])).isoformat())
+
+    def fetcher(query):
+        calls.append(query)
+        if failing[0]:
+            raise ConnectionResetError("fixture_provider_down")
+        return HEAD_RSS
+
+    board = H.HeadlineBoard(fetcher=fetcher)
+    saved = board.snapshot(PAIRS)
+    assert saved["items"] and len(calls) == len(PAIRS)
+    calls.clear()
+    clock[0] += board.ttl_s + 1
+    failing[0] = True
+    stale = board.snapshot(PAIRS)
+    # /news reads the board once; each pair endpoint then reads it through
+    # for_pair and again for fetched_at. One failed round must cover them all.
+    for pair in PAIRS:
+        board.for_pair(PAIRS, pair)
+        board.snapshot(PAIRS)
+    assert len(calls) == len(PAIRS) == 6
+    assert stale["items"] == saved["items"]
+    assert stale["fetched_at"] == saved["fetched_at"]
+    assert stale["stale"] is True
+    assert len(stale["errors"]) == len(PAIRS)
+    assert all("ConnectionResetError" in error for error in stale["errors"])
+
+    # A reachable provider is retried only once the existing TTL expires.
+    failing[0] = False
+    clock[0] += board.ttl_s - 0.5
+    assert board.snapshot(PAIRS) == stale
+    assert len(calls) == 6
+    clock[0] += 0.5
+    recovered = board.snapshot(PAIRS)
+    assert len(calls) == 12
+    assert recovered["fetched_at"] != saved["fetched_at"]
+    assert recovered["errors"] == []
+    assert "stale" not in recovered
+    board.snapshot(PAIRS)
+    assert len(calls) == 12
+
+
 def test_today_headlines_are_live_and_reach_the_pair_panel(site, monkeypatch):
     """Today's headlines are decoupled from the trigger gate: even on quiet days
     the page must carry that day's news.

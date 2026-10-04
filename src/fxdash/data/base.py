@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from ..config import CACHE_DIR, USER_DIR
@@ -72,11 +75,19 @@ def _read_cache(name: str):
 
 def _write_cache(name: str, frame: pd.DataFrame) -> None:
     path = cache_path(name)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
     try:
-        frame.to_parquet(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".parquet.tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+        # Readers retain the complete old parquet until the new one is closed.
+        frame.to_parquet(temporary)
+        temporary.replace(path)
     except Exception as exc:
         log.warning("cache write failed %s: %s", path.name, exc)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def get_frame(name: str, fetcher, user_loader=None) -> pd.DataFrame:
@@ -93,6 +104,8 @@ def get_frame(name: str, fetcher, user_loader=None) -> pd.DataFrame:
             if frame is None or len(frame) == 0:
                 raise RuntimeError("empty response")
             frame = _normalise(frame)
+            if frame.empty:
+                raise RuntimeError("response has no usable rows")
             _write_cache(name, frame)
             record("fetch_online", series=name, rows=len(frame), last=_last_date(frame))
             return frame
@@ -104,15 +117,21 @@ def get_frame(name: str, fetcher, user_loader=None) -> pd.DataFrame:
 
     cached = _read_cache(name)
     if cached is not None and len(cached):
-        cached = _normalise(cached)
-        record(
-            "fallback_cache",
-            series=name,
-            file=cache_path(name).name,
-            last=_last_date(cached),
-            reason=str(last_exc)[:200],
-        )
-        return cached
+        try:
+            cached = _normalise(cached)
+            if cached.empty:
+                raise RuntimeError("cache has no usable rows")
+        except Exception as exc:
+            log.warning("cache unusable %s: %s", cache_path(name).name, exc)
+        else:
+            record(
+                "fallback_cache",
+                series=name,
+                file=cache_path(name).name,
+                last=_last_date(cached),
+                reason=str(last_exc)[:200],
+            )
+            return cached
 
     if user_loader is not None:
         try:
@@ -146,8 +165,10 @@ def _normalise(obj) -> pd.DataFrame:
     frame = obj.to_frame() if isinstance(obj, pd.Series) else pd.DataFrame(obj)
     frame.index = pd.to_datetime(frame.index).normalize()
     frame.index.name = "date"
+    frame = frame[~frame.index.isna()]
     frame = frame[~frame.index.duplicated(keep="last")].sort_index()
     frame = frame.apply(pd.to_numeric, errors="coerce")
+    frame = frame.replace([np.inf, -np.inf], np.nan)
     return frame.dropna(how="all")
 
 

@@ -3,11 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
 import sys
 import uuid
+
+
+CLOCK_DIAGNOSTIC = 'heartbeat time is ahead of observation; check the system clock'
 
 
 def now_utc():
@@ -41,7 +45,7 @@ def stamp(value):
         parsed = datetime.fromisoformat(value)
         # Historical pipeline timestamps used the host's local zone.
         return parsed.astimezone(timezone.utc)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError, OSError):
         return None
 
 
@@ -89,29 +93,79 @@ def latest_attempt(output_dir, *, clock=now_utc):
         return {'state': 'unreadable'}
     result = {k: row[k] for k in ('state', 'run_id', 'started_at', 'finished_at', 'deadline',
               'exit_code', 'exit_hex', 'source', 'contract_last_date') if k in row}
-    if row['state'] == 'running' and (end := stamp(row.get('deadline'))) and clock() > end:
-        result['state'] = 'interrupted'
+    if row['state'] == 'running':
+        end = stamp(row.get('deadline'))
+        if end is None or end < started:
+            return {'state': 'unreadable'}
+        observed = stamp(str(clock()))
+        if observed is None:
+            return {'state': 'unreadable'}
+        if observed > end:
+            result['state'] = 'interrupted'
     return result
 
 
 def status_view(output_dir, stored, *, clock=now_utc):
-    observed = clock()
+    observed = stamp(str(clock()))
     attempt = latest_attempt(output_dir, clock=lambda: observed)
+    diagnostics = []
+    if not isinstance(stored, dict):
+        stored = {}
+        diagnostics.append('saved calculation status unreadable')
     saved = stored if stored.get('contract_last_date') else read_json(Path(output_dir)/'task_runs/live/last_success.json') or stored
-    pulse = dict(stored.get('heartbeat') or {})
-    last = stamp(pulse.get('last_live_success'))
-    age = (observed-last).total_seconds()/3600 if last else None
-    fresh = 'red' if age is None or age > pulse.get('crit_hours', 72) else 'yellow' if age > pulse.get('warn_hours', 26) else 'green'
-    pulse.update(age_hours=age, state=fresh)
+    original_pulse = stored.get('heartbeat')
+    valid_pulse = isinstance(original_pulse, dict)
+    original_pulse = original_pulse if valid_pulse else {}
+    warn, critical = original_pulse.get('warn_hours', 26), original_pulse.get('crit_hours', 72)
+    try:
+        valid_thresholds = (type(warn) in (int, float) and type(critical) in (int, float)
+                            and math.isfinite(warn) and math.isfinite(critical) and 0 < warn <= critical)
+    except OverflowError:
+        valid_thresholds = False
+    if not valid_thresholds:
+        warn, critical = 26, 72
+        diagnostics.append('heartbeat thresholds unreadable')
+    last = stamp(original_pulse.get('last_live_success'))
+    age = (observed-last).total_seconds()/3600 if observed and last else None
+    if observed is None:
+        fresh, note = 'red', 'heartbeat observation time unreadable'
+    elif not valid_pulse or last is None:
+        fresh, note = 'red', 'heartbeat record unreadable'
+    elif age < 0:
+        fresh, note = 'red', CLOCK_DIAGNOSTIC
+    elif age > critical:
+        fresh, note = 'red', f'suspected scheduler stall: {age:.0f} hours without a successful live run'
+    elif age > warn:
+        fresh, note = 'yellow', f'suspected scheduler stall: {age:.0f} hours without a successful live run'
+    else:
+        fresh, note = 'green', 'scheduler healthy'
+    if not valid_thresholds:
+        fresh = 'red'
+        if note == 'scheduler healthy':
+            note = 'heartbeat thresholds unreadable'
+    if fresh == 'red' and note not in diagnostics:
+        diagnostics.append(note)
+    # Export only the heartbeat schema, never malformed values from the saved
+    # record. In particular NaN/Infinity thresholds must not reach JSONResponse.
+    pulse = {'last_live_success': last.isoformat() if last else None,
+             'age_hours': age, 'state': fresh, 'note': note,
+             'warn_hours': warn, 'crit_hours': critical}
     rank = {'green': 0, 'yellow': 1, 'red': 2}
-    state = max((stored.get('state', 'red'), fresh), key=lambda s: rank.get(s, 2))
+    saved_state = stored.get('state')
+    if not isinstance(saved_state, str) or saved_state not in rank:
+        saved_state = 'red'
+        diagnostics.append('saved calculation state unreadable')
+    state = max((saved_state, fresh), key=rank.__getitem__)
     failed = attempt['state'] in {'failed', 'crashed', 'timed_out', 'launch_failed', 'completion_unconfirmed', 'interrupted', 'unreadable'}
     if failed:
         state = 'red'
     elif attempt['state'] == 'running' and state == 'green':
         state = 'yellow'
-    return {**stored, 'state': state, 'last_success_state': stored.get('state'),
-            'heartbeat': pulse, 'runtime': {'observed_at': observed.isoformat(),
+    reasons = stored.get('reasons')
+    reasons = [r for r in reasons if isinstance(r, str)] if isinstance(reasons, list) else []
+    reasons.extend(note for note in diagnostics if note not in reasons)
+    return {**stored, 'state': state, 'last_success_state': saved_state, 'reasons': reasons,
+            'heartbeat': pulse, 'runtime': {'observed_at': observed.isoformat() if observed else None,
              'latest_attempt': attempt, 'last_success_at': last.isoformat() if last else None,
              'attribution_as_of': saved.get('contract_last_date'),
              'provisional_rows': saved.get('provisional_rows'),
@@ -135,7 +189,9 @@ def supervise(repo, output_dir, *, executable=None, runner=subprocess.run, clock
             atomic_json(folder / 'start.json', row)
             atomic_json(root / 'latest.json', row)
             previous = read_json(output_dir/'status.json')
-            if previous.get('mode') == 'live' and stamp((previous.get('heartbeat') or {}).get('last_live_success')):
+            previous_pulse = previous.get('heartbeat')
+            previous_success = stamp(previous_pulse.get('last_live_success')) if isinstance(previous_pulse, dict) else None
+            if previous.get('mode') == 'live' and previous_success:
                 atomic_json(root/'last_success.json', previous)
             env = dict(os.environ, PYTHONPATH=str(repo/'src'), PYTHONUNBUFFERED='1',
                        PYTHONIOENCODING='utf-8', PYTHONFAULTHANDLER='1')
@@ -148,14 +204,21 @@ def supervise(repo, output_dir, *, executable=None, runner=subprocess.run, clock
                     result = runner(command, cwd=repo, env=env, stdout=log, stderr=subprocess.STDOUT,
                                     timeout=timeout, check=False,
                                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+                    completed = clock()
                 code = result.returncode
                 row.update(exit_code=code, exit_hex=f'0x{code & 0xffffffff:08x}')
                 if code:
                     row['state'] = 'crashed' if code < 0 or code & 0x80000000 else 'failed'
                 else:
                     current = read_json(output_dir/'status.json')
-                    last = stamp((current.get('heartbeat') or {}).get('last_live_success'))
-                    row['state'] = 'succeeded' if last and last >= started and current.get('mode') == 'live' else 'completion_unconfirmed'
+                    current_pulse = current.get('heartbeat')
+                    last = stamp(current_pulse.get('last_live_success')) if isinstance(current_pulse, dict) else None
+                    # A zero exit alone cannot confirm a new commit. An old
+                    # heartbeat, including a future stamp after a clock change,
+                    # belongs to the previous run even if it passes >= started.
+                    committed = (current != previous and last and last != previous_success
+                                 and started <= last <= completed and current.get('mode') == 'live')
+                    row['state'] = 'succeeded' if committed else 'completion_unconfirmed'
                     row['contract_last_date'] = current.get('contract_last_date')
                     if row['state'] == 'succeeded':
                         atomic_json(root/'last_success.json', current)

@@ -48,6 +48,53 @@ def test_zero_exit_with_old_success_is_not_success(isolated_outputs):
     assert result['state']=='completion_unconfirmed'
 
 
+@pytest.mark.parametrize('at', [NOW, NOW+timedelta(days=5)])
+def test_zero_exit_without_a_new_saved_success_is_not_success(isolated_outputs, at):
+    previous=status(at)
+    T.atomic_json(isolated_outputs/'status.json', previous)
+    result=T.supervise(isolated_outputs.parent,isolated_outputs,
+                       runner=lambda *a,**k:SimpleNamespace(returncode=0),clock=lambda:NOW)
+    assert result['state']=='completion_unconfirmed'
+    assert T.read_json(isolated_outputs/'status.json')==previous
+
+
+def test_changed_metadata_with_unchanged_heartbeat_is_not_a_new_success(isolated_outputs):
+    previous=status(NOW+timedelta(days=5))
+    T.atomic_json(isolated_outputs/'status.json', previous)
+    def runner(*args, **kwargs):
+        T.atomic_json(isolated_outputs/'status.json', {**previous, 'provisional_rows':2})
+        return SimpleNamespace(returncode=0)
+    result=T.supervise(isolated_outputs.parent,isolated_outputs,runner=runner,clock=lambda:NOW)
+    assert result['state']=='completion_unconfirmed'
+
+
+@pytest.mark.parametrize('pulse', [None, [], {'last_live_success':'not-a-date'}])
+def test_zero_exit_with_invalid_saved_heartbeat_is_unconfirmed(isolated_outputs, pulse):
+    T.atomic_json(isolated_outputs/'status.json',status(NOW-timedelta(days=1)))
+    def runner(*args, **kwargs):
+        T.atomic_json(isolated_outputs/'status.json', {**status(), 'heartbeat':pulse})
+        return SimpleNamespace(returncode=0)
+    result=T.supervise(isolated_outputs.parent,isolated_outputs,runner=runner,clock=lambda:NOW)
+    assert result['state']=='completion_unconfirmed'
+
+
+@pytest.mark.parametrize('offset,expected', [(-1,'completion_unconfirmed'), (0,'succeeded'),
+    (5,'succeeded'), (10,'succeeded'), (11,'completion_unconfirmed')])
+def test_new_success_must_fall_within_the_child_run(isolated_outputs, offset, expected):
+    previous=status(NOW-timedelta(days=1))
+    T.atomic_json(isolated_outputs/'status.json', previous)
+    # Child returned at +10s; the final supervisor record is written at +12s.
+    observations=iter((NOW, NOW+timedelta(seconds=10), NOW+timedelta(seconds=12)))
+    def runner(*args, **kwargs):
+        T.atomic_json(isolated_outputs/'status.json',status(NOW+timedelta(seconds=offset)))
+        return SimpleNamespace(returncode=0)
+    result=T.supervise(isolated_outputs.parent,isolated_outputs,runner=runner,clock=lambda:next(observations))
+    assert result['state']==expected
+    assert result['finished_at']==(NOW+timedelta(seconds=12)).isoformat()
+    expected_success=status(NOW+timedelta(seconds=offset)) if expected=='succeeded' else previous
+    assert T.read_json(isolated_outputs/'task_runs/live/last_success.json')==expected_success
+
+
 @pytest.mark.skipif(os.name!='nt', reason='Windows native process exit status')
 def test_actual_child_native_exit_status_is_recorded(isolated_outputs):
     # ExitProcess reports the native status without creating a crash dialog or
@@ -85,10 +132,101 @@ def test_running_record_expires_and_malformed_record_fails_closed(isolated_outpu
     assert T.latest_attempt(isolated_outputs)['state']=='unreadable'
 
 
+@pytest.mark.parametrize('extra', [{}, {'deadline':None}, {'deadline':'not-a-date'},
+    {'deadline':(NOW-timedelta(seconds=1)).isoformat()}])
+def test_running_record_requires_a_valid_ordered_deadline(isolated_outputs, extra):
+    target=isolated_outputs/'task_runs/live/latest.json'
+    T.atomic_json(target,{'state':'running','run_id':'test','started_at':NOW.isoformat(),**extra})
+    assert T.latest_attempt(isolated_outputs,clock=lambda:NOW+timedelta(days=30))=={'state':'unreadable'}
+
+
+def test_running_deadline_boundary_preserves_expiry_rule(isolated_outputs):
+    target=isolated_outputs/'task_runs/live/latest.json'
+    T.atomic_json(target,{'state':'running','run_id':'test','started_at':NOW.isoformat(),'deadline':NOW.isoformat()})
+    assert T.latest_attempt(isolated_outputs,clock=lambda:NOW)['state']=='running'
+    assert T.latest_attempt(isolated_outputs,clock=lambda:NOW+timedelta(microseconds=1))['state']=='interrupted'
+
+
 def test_age_is_recomputed_and_does_not_mutate_saved_status(isolated_outputs):
     saved=status()
     result=T.status_view(isolated_outputs,saved,clock=lambda:NOW+timedelta(hours=27))
     assert result['state']=='yellow' and saved==status()
+
+
+@pytest.mark.parametrize('stored', [None, [], ['bad'], 'bad', 1])
+def test_nonobject_saved_status_is_a_serializable_red_view(isolated_outputs, stored):
+    T.atomic_json(isolated_outputs/'task_runs/live/last_success.json',status())
+    view=T.status_view(isolated_outputs,stored,clock=lambda:NOW)
+    assert view['state']=='red'
+    assert view['runtime']['attribution_as_of']=='2026-09-08'
+    assert 'saved calculation status unreadable' in view['reasons']
+    json.dumps(view,allow_nan=False)
+
+
+@pytest.mark.parametrize('pulse', ['bad', [1], 1, None, [['last_live_success',NOW.isoformat()]]])
+def test_nonobject_saved_heartbeat_cannot_be_coerced_green(isolated_outputs, pulse):
+    view=T.status_view(isolated_outputs,{**status(),'heartbeat':pulse},clock=lambda:NOW)
+    assert view['state']=='red' and view['heartbeat']['state']=='red'
+    assert view['heartbeat']['note']=='heartbeat record unreadable'
+    assert view['runtime']['last_success_at'] is None
+    json.dumps(view,allow_nan=False)
+
+
+@pytest.mark.parametrize('thresholds', [{'warn_hours':'26'}, {'crit_hours':None},
+    {'warn_hours':float('inf')}, {'crit_hours':float('nan')}, {'warn_hours':True},
+    {'warn_hours':73,'crit_hours':72}, {'warn_hours':0}, {'crit_hours':-1},
+    {'crit_hours':10**1000}])
+def test_invalid_saved_thresholds_are_red_and_use_safe_defaults(isolated_outputs, thresholds):
+    saved={**status(),'heartbeat':{'last_live_success':NOW.isoformat(),**thresholds}}
+    view=T.status_view(isolated_outputs,saved,clock=lambda:NOW)
+    assert view['state']=='red' and view['heartbeat']['state']=='red'
+    assert view['heartbeat']['warn_hours']==26 and view['heartbeat']['crit_hours']==72
+    assert 'heartbeat thresholds unreadable' in view['reasons']
+    json.dumps(view,allow_nan=False)
+
+
+@pytest.mark.parametrize('state', ['unrecognized', None, [], {}])
+def test_invalid_saved_state_is_a_red_diagnostic(isolated_outputs, state):
+    view=T.status_view(isolated_outputs,{**status(),'state':state},clock=lambda:NOW)
+    assert view['state']=='red' and view['last_success_state']=='red'
+    assert 'saved calculation state unreadable' in view['reasons']
+    json.dumps(view,allow_nan=False)
+
+
+@pytest.mark.parametrize('future', [timedelta(microseconds=1),timedelta(hours=120)])
+def test_future_success_is_red_without_replacing_latest_attempt(isolated_outputs, future):
+    T.atomic_json(isolated_outputs/'task_runs/live/latest.json',
+                  {'state':'succeeded','run_id':'test','started_at':NOW.isoformat()})
+    view=T.status_view(isolated_outputs,status(NOW+future),clock=lambda:NOW)
+    assert view['state']=='red' and view['heartbeat']['state']=='red'
+    assert view['heartbeat']['note']==T.CLOCK_DIAGNOSTIC
+    assert T.CLOCK_DIAGNOSTIC in view['reasons']
+    assert view['runtime']['latest_attempt']['state']=='succeeded'
+    assert view['heartbeat']['age_hours']<0
+
+
+def test_success_equal_to_observation_is_valid(isolated_outputs):
+    view=T.status_view(isolated_outputs,status(),clock=lambda:NOW)
+    assert view['state']=='green' and view['heartbeat']['age_hours']==0
+
+
+@pytest.mark.parametrize('naive_clock', [False, True])
+def test_saved_status_mixed_timezones_use_host_local_semantics(isolated_outputs, naive_clock):
+    last=NOW-timedelta(hours=2)
+    saved_at=last if naive_clock else last.astimezone().replace(tzinfo=None)
+    observed=NOW.astimezone().replace(tzinfo=None) if naive_clock else NOW
+    view=T.status_view(isolated_outputs,status(saved_at),clock=lambda:observed)
+    assert view['state']=='green' and view['heartbeat']['age_hours']==2
+    assert view['runtime']['observed_at']==NOW.isoformat()
+
+
+def test_running_attempt_accepts_a_naive_host_local_clock(isolated_outputs):
+    T.atomic_json(isolated_outputs/'task_runs/live/latest.json',
+                  {'state':'running','run_id':'test','started_at':NOW.isoformat(),
+                   'deadline':(NOW+timedelta(hours=1)).isoformat()})
+    local_clock=NOW.astimezone().replace(tzinfo=None)
+    assert T.latest_attempt(isolated_outputs,clock=lambda:local_clock)['state']=='running'
+    assert T.latest_attempt(isolated_outputs,clock=lambda:local_clock+timedelta(hours=2))['state']=='interrupted'
 
 
 def test_previous_data_identity_survives_python_exception_status(isolated_outputs):
@@ -212,6 +350,41 @@ def test_runtime_frontend_clock_failure_and_static_wording():
     subprocess.run(['node','--input-type=module','-e',script],cwd=root,check=True,capture_output=True)
 
 
+@pytest.mark.parametrize('lang', ['en', 'zh'])
+def test_runtime_frontend_explains_stale_success_and_keeps_failure_visible(lang):
+    root = Path(__file__).resolve().parents[1]
+    script = """
+      import assert from 'node:assert/strict';
+      const lang=process.argv[1];
+      globalThis.localStorage={getItem:()=>lang};
+      const {runtimeState,runtimeHtml}=await import('./src/fxdash/web/static/runtime-status.js');
+      const start=new Date('2026-09-08T22:00:00Z');
+      const data={last_success_state:'green',runtime:{last_success_at:start.toISOString(),
+        latest_attempt:{state:'succeeded',started_at:start.toISOString()}}};
+      const render=hours=>runtimeHtml(data,{mode:'static'},new Date(start.getTime()+hours*3600000));
+      const summary=html=>html.match(/<summary>(.*?)<\\/summary>/s)[1];
+      assert.match(render(26),/data-runtime-freshness="current"/);
+      assert.match(render(26.01),/data-runtime-tone="yellow"/);
+      assert.match(summary(render(26.01)),lang==='zh'?/超过 26 小时/:/over 26 hours old/);
+      assert.match(render(72),/data-runtime-freshness="delayed"/);
+      const stale=render(72.01);
+      assert.match(stale,/data-runtime-tone="red"/);
+      assert.match(summary(stale),lang==='zh'?/超过 72 小时/:/over 72 hours old/);
+      assert.match(stale,lang==='zh'?/最近计算成功/:/Last attempt succeeded/);
+      assert.equal(runtimeState(data,new Date(start.getTime()+73*3600000)).state,'succeeded');
+      data.runtime.latest_attempt.state='crashed';
+      assert.match(summary(render(73)),lang==='zh'?/计算进程异常退出/:/Calculation process crashed/);
+      data.runtime.latest_attempt.state='succeeded';
+      data.runtime.last_success_at='invalid';
+      assert.match(render(0),/data-runtime-freshness="unknown"/);
+      assert.match(summary(render(0)),lang==='zh'?/时间未知/:/time is unknown/);
+      delete data.runtime.last_success_at;
+      assert.match(render(0),/data-runtime-tone="red"/);
+    """
+    subprocess.run(['node', '--input-type=module', '-e', script, lang],
+                   cwd=root, check=True, capture_output=True)
+
+
 @pytest.mark.parametrize('body,category',[
     ({'candidates':[]},'no_candidate'),
     ({'candidates':[{'finishReason':'MAX_TOKENS'}]},'output_limit'),
@@ -243,3 +416,35 @@ def test_status_endpoint_observes_failure_without_contract_reload(isolated_outpu
     assert changed['runtime']['latest_attempt']['state']=='crashed'
     assert changed['server']['data_version']==initial['server']['data_version']
     assert client.get('/api/overview').json()['status_digest']['state']=='red'
+
+
+@pytest.mark.parametrize('pulse,diagnostic', [
+    ({'last_live_success':(NOW+timedelta(hours=1)).isoformat()},T.CLOCK_DIAGNOSTIC),
+    ([1],'heartbeat record unreadable'),
+    ({'last_live_success':NOW.isoformat(),'crit_hours':None},'heartbeat thresholds unreadable'),
+])
+def test_overview_digest_includes_observed_clock_and_saved_record_diagnostics(isolated_outputs,monkeypatch,pulse,diagnostic):
+    from fastapi.testclient import TestClient
+    from fxdash.web.app import create_app
+    from fxdash.web import market
+    from fxdash.narrative import morning
+    from test_web import _write_fixture
+    _write_fixture(isolated_outputs)
+    saved={**status(),'heartbeat':pulse,'reasons':['saved explanation']}
+    T.atomic_json(isolated_outputs/'status.json',saved)
+    original=(isolated_outputs/'status.json').read_bytes()
+    T.atomic_json(isolated_outputs/'task_runs/live/latest.json',
+                  {'state':'succeeded','run_id':'test','started_at':NOW.isoformat()})
+    monkeypatch.setattr(morning,'now_utc',lambda:NOW)
+    monkeypatch.setattr(market,'_fetch_dxy',lambda:None)
+    client=TestClient(create_app(isolated_outputs,cache_dir=isolated_outputs/'empty'))
+    status_response=client.get('/api/status')
+    overview_response=client.get('/api/overview')
+    assert status_response.status_code==200 and overview_response.status_code==200
+    observed=status_response.json()
+    digest=overview_response.json()['status_digest']
+    assert observed['state']=='red' and digest['state']=='red'
+    assert diagnostic in digest['reasons'] and 'saved explanation' in digest['reasons']
+    assert digest['reasons']==observed['reasons']
+    assert digest['runtime']['latest_attempt']['state']=='succeeded'
+    assert (isolated_outputs/'status.json').read_bytes()==original

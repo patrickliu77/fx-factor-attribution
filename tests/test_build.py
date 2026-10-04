@@ -9,15 +9,18 @@ copy of what the live server would have answered.
 import json
 import re
 import stat
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 from fxdash.web import build as B
 from fxdash.web.app import STATIC_DIR, create_app
 from fxdash.web.market import RANGES as MARKET_RANGES
-from test_web import EMPTY_RSS, _write_cache, _write_fixture
+from test_web import EMPTY_RSS, _row, _write_cache, _write_fixture
 
 
 @pytest.fixture(autouse=True)
@@ -202,3 +205,113 @@ def test_unreadable_input_keeps_previous_build(tmp_path):
     with pytest.raises(SnapshotError):
         B.build(out, output_dir=tmp_path / "missing")
     assert marker.read_text(encoding="utf-8") == "previous build"
+
+
+def _advance_fixture(root):
+    """Complete a second synthetic pipeline commit with one extra trading day."""
+    contract = root / "contract/year=2026/part.parquet"
+    frame = pd.read_parquet(contract)
+    extra = pd.DataFrame([_row("2026-01-08", pair, 9, model=model)
+                          for pair in ("USDEUR", "USDAUD") for model in ("ols", "lasso")])
+    pd.concat([frame, extra], ignore_index=True).to_parquet(contract, index=False)
+    status = json.loads((root / "status.json").read_text(encoding="utf-8"))
+    status["generated_at"] = "2026-01-08 19:35:00"
+    (root / "status.json").write_text(json.dumps(status), encoding="utf-8")
+
+
+@pytest.mark.parametrize("has_previous", [False, True])
+def test_api_failure_leaves_previous_site_and_no_partial_export(site_app, tmp_path, has_previous, monkeypatch):
+    root, app = site_app
+    out = tmp_path / "site"
+    if has_previous:
+        out.mkdir()
+        (out / "index.html").write_bytes(b"previous index")
+        (out / "build.json").write_bytes(b"previous manifest")
+    before = {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+
+    @app.middleware("http")
+    async def fail_after_initial_api_files(request, call_next):
+        if request.url.path == "/api/market/ticker":
+            raise RuntimeError("fixture_api_failure")
+        return await call_next(request)
+
+    with pytest.raises(RuntimeError, match="fixture_api_failure"):
+        B.build(out, app=app)
+    assert out.exists() is has_previous
+    assert {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()} == before
+    assert not list(tmp_path.glob(".site.build-*"))
+    assert not list(tmp_path.glob(".site.previous-*"))
+
+    # A failed export must reset the pin before the ordinary web service reads
+    # the next completed pipeline commit.
+    app.state.store.settle_s = app.state.store.signature_gap_s = 0
+    monkeypatch.setattr("fxdash.web.store.CHECK_INTERVAL_S", 0)
+    _advance_fixture(root)
+    meta = TestClient(app).get("/api/meta").json()
+    assert meta["date_range"]["last"] == "2026-01-08"
+
+
+def test_install_failure_restores_previous_directory(site_app, tmp_path, monkeypatch):
+    _, app = site_app
+    out = tmp_path / "site"
+    out.mkdir()
+    (out / "index.html").write_bytes(b"previous index")
+    (out / "build.json").write_bytes(b"previous manifest")
+    rename = Path.rename
+
+    def fail_install(source, target):
+        if source.name.startswith(".site.build-"):
+            raise PermissionError("fixture_install_locked")
+        return rename(source, target)
+
+    monkeypatch.setattr(Path, "rename", fail_install)
+    with pytest.raises(PermissionError, match="fixture_install_locked"):
+        B.build(out, app=app)
+    assert (out / "index.html").read_bytes() == b"previous index"
+    assert (out / "build.json").read_bytes() == b"previous manifest"
+    assert sorted(p.name for p in out.iterdir()) == ["build.json", "index.html"]
+    assert not list(tmp_path.glob(".site.build-*"))
+    assert not list(tmp_path.glob(".site.previous-*"))
+
+
+def test_export_pins_one_version_across_pipeline_commit_and_other_web_reader(site_app, tmp_path, monkeypatch):
+    root, app = site_app
+    store = app.state.store
+    first = store.snapshot
+    store.settle_s = store.signature_gap_s = 0
+    monkeypatch.setattr("fxdash.web.store.CHECK_INTERVAL_S", 0)
+    client_type = B.TestClient
+    requests = []
+
+    class CommittingClient:
+        def __init__(self, app):
+            self.client = client_type(app)
+
+        def get(self, path):
+            response = self.client.get(path)
+            requests.append(path)
+            if len(requests) == 1:
+                assert path == "/api/meta"
+                _advance_fixture(root)
+                # An independent caller still hot reloads during the export;
+                # only the build's request context holds the original snapshot.
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    current = executor.submit(store.current).result()
+                assert current.date_last == "2026-01-08"
+                assert current.data_version != first.data_version
+            return response
+
+    monkeypatch.setattr(B, "TestClient", CommittingClient)
+    out = tmp_path / "site"
+    manifest = B.build(out, app=app)
+    assert requests.count("/api/meta") == 1
+    meta = json.loads((out / "api/meta.json").read_bytes())
+    status = json.loads((out / "api/status.json").read_bytes())
+    news = json.loads((out / "api/news.json").read_bytes())
+    overview = json.loads((out / B.file_for("/overview?window=126&model=ols")).read_bytes())
+    assert manifest["data_version"] == meta["data_version"] == overview["data_version"] == first.data_version
+    assert status["server"]["data_version"] == first.data_version
+    assert manifest["as_of"] == meta["date_range"]["last"] == overview["as_of"] == news["as_of"] == "2026-01-07"
+    live_meta = client_type(app).get("/api/meta").json()
+    assert live_meta["date_range"]["last"] == "2026-01-08"
+    assert live_meta["data_version"] != manifest["data_version"]

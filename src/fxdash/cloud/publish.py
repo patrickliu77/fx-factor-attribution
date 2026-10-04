@@ -9,12 +9,14 @@ from __future__ import annotations
 import argparse
 import base64
 from dataclasses import dataclass
+from datetime import date
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+from urllib.parse import parse_qs, urlsplit
 
 from .. import config
 from ..web import build as B
@@ -69,6 +71,105 @@ def _json(body):
         raise StateError("invalid_publication_json") from None
 
 
+def _day(value):
+    return isinstance(value, str) and date.fromisoformat(value).isoformat() == value
+
+
+def _snapshot_identity(value, meta):
+    """Check fields describing the current contract, not frozen older editions."""
+    for key in ("data_version", "model_revision"):
+        if key in value and value[key] != meta.get(key):
+            raise ValueError()
+    if "as_of" in value and value["as_of"] != meta["date_range"]["last"]:
+        raise ValueError()
+
+
+def _publication_identity(files, manifest, meta, responses):
+    last = meta["date_range"]["last"]
+    if (not _day(last) or not isinstance(meta["data_version"], str) or not meta["data_version"]
+            or manifest["data_version"] != meta["data_version"] or manifest["as_of"] != last
+            or manifest.get("model_revision") != meta.get("model_revision")):
+        raise ValueError()
+
+    dated = {"/overview", "/news", "/narrative/daily", "/attribution/weekly", "/research/comparison"}
+    versioned = {"/overview", "/research/comparison"}
+    selectors = {"/overview", "/narrative/daily", "/attribution/weekly", "/research/comparison"}
+    for request, value in responses.items():
+        if not isinstance(value, dict):
+            raise ValueError()
+        path, params = urlsplit(request).path, parse_qs(urlsplit(request).query)
+        _snapshot_identity(value, meta)
+        if path in dated and value["as_of"] != last:
+            raise ValueError()
+        if path in versioned and value["data_version"] != meta["data_version"]:
+            raise ValueError()
+        series = re.fullmatch(r"/pairs/([^/]+)/series", path)
+        for key in ("window", "model"):
+            if key in params and (key in value or path in selectors or series):
+                if value[key] != (int(params[key][0]) if key == "window" else params[key][0]):
+                    raise ValueError()
+        if path == "/research/comparison" and value.get("model_revision") != meta.get("model_revision"):
+            raise ValueError()
+        if series:
+            dates = value["dates"]
+            if (value["pair"] != series[1] or not isinstance(dates, list) or not dates
+                    or not all(_day(day) for day in dates) or dates != sorted(set(dates)) or dates[-1] != last):
+                raise ValueError()
+        if path == "/overview":
+            summary = value["summary"]
+            _snapshot_identity(summary, meta)
+            if any(summary[key] != value[key] for key in ("as_of", "window", "model")):
+                raise ValueError()
+            runtime = (value.get("status_digest") or {}).get("runtime") or {}
+            for key in ("contract_last_date", "attribution_as_of"):
+                if runtime.get(key) not in (None, last):
+                    raise ValueError()
+
+    status = responses["/status"]
+    if (status["server"]["data_version"] != meta["data_version"]
+            or status.get("model_revision") != meta.get("model_revision")):
+        raise ValueError()
+    for value in (status, status.get("runtime") or {}):
+        for key in ("contract_last_date", "attribution_as_of"):
+            if value.get(key) not in (None, last):
+                raise ValueError()
+
+    news = responses["/news"]
+    if news.get("drivers"):
+        _snapshot_identity(news["drivers"], meta)
+    current, archive = news.get("briefing") or {}, news.get("briefing_archive") or {}
+    identity = None
+    if current.get("mode") in {"edition", "catchup"} and current.get("edition_hash"):
+        if not _day(current["date"]) or not re.fullmatch(r"[0-9a-f]{64}", current["edition_hash"]):
+            raise ValueError()
+        identity = {key: current[key] for key in ("date", "edition_hash")}
+        if current["mode"] == "catchup":
+            identity["mode"] = "catchup"
+    recorded = manifest.get("briefing")
+    if identity is None:
+        if recorded is not None:
+            raise ValueError()
+    elif (not isinstance(recorded, dict)
+          or any(recorded.get(key) != identity[key] for key in ("date", "edition_hash"))
+          or recorded.get("mode", "edition") != current["mode"]):
+        raise ValueError()
+
+    checked = {}
+    for edition in [current] + archive.get("history", []) + archive.get("catchup_history", []):
+        for lang, item in ((edition.get("audio") or {}).get("languages") or {}).items():
+            if item.get("state") != "ready":
+                continue
+            name, digest = item["url"], item["audio_sha256"]
+            parts = name.split("/")
+            if (name not in manifest["media_files"] or not isinstance(digest, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                    or parts[2:5] != [edition["mode"], edition["date"], edition["edition_hash"]]
+                    or parts[-1] != lang + ".mp3" or checked.get(name, digest) != digest
+                    or hashlib.sha256(files[name]).hexdigest() != digest):
+                raise ValueError()
+            checked[name] = digest
+
+
 def _validated(candidate, *, staged=False, secrets=None):
     files = _files(_directory(candidate), staged=staged)
     try:
@@ -91,10 +192,13 @@ def _validated(candidate, *, staged=False, secrets=None):
         allowed = set(assets) | set(expected.values()) | set(manifest["media_files"]) | {"build.json", ".nojekyll"}
         if set(files) != allowed or files[".nojekyll"] != b"" or any(files[name] != body for name, body in assets.items()):
             raise ValueError()
-        for name in expected.values():
-            _json(files[name])
+        responses = {request: _json(files[name]) for request, name in expected.items()}
     except (KeyError, TypeError, ValueError, AttributeError):
         raise StateError("publication_allowlist_mismatch") from None
+    try:
+        _publication_identity(files, manifest, meta, responses)
+    except (KeyError, TypeError, ValueError, AttributeError, StopIteration):
+        raise StateError("publication_identity_mismatch") from None
     secrets = known_secrets() if secrets is None else secrets
     if any(value in body for body in files.values() for value in secrets):
         raise StateError("secret_in_publication_refused")

@@ -97,7 +97,11 @@ def harness(tmp_path, monkeypatch):
     def collect(snapshot, **kwargs):
         assert len(snapshot.combos) == 54 and snapshot.output_dir != config.OUTPUT_DIR
         calls.append("news")
-        return copy.deepcopy(p)
+        result = copy.deepcopy(p)
+        # The current-news projection follows its source snapshot, as the real
+        # collector does; frozen editions retain their independent identity.
+        result.update(data_version=snapshot.data_version, as_of=snapshot.date_last)
+        return result
     monkeypatch.setattr("fxdash.web.drivers.collect", collect)
     class Client:
         def __init__(self, **kw):

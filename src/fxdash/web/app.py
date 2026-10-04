@@ -7,6 +7,7 @@ uvicorn launch: uvicorn fxdash.web.app:create_app --factory
 
 from __future__ import annotations
 
+from datetime import date as calendar_date
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, Response
@@ -95,7 +96,17 @@ def create_app(output_dir: Path | None = None,
         response.headers["ETag"] = tag
         response.headers["Cache-Control"] = "no-cache"
         if request.headers.get("if-none-match") == tag:
-            raise HTTPException(304)
+            raise HTTPException(304, headers={"ETag": tag, "Cache-Control": "no-cache"})
+
+    def validate_day(value: str | None, name: str):
+        if value is None:
+            return
+        try:
+            valid = calendar_date.fromisoformat(value).isoformat() == value
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise HTTPException(422, detail=f"{name} must be a date in YYYY-MM-DD format")
 
     # ------------------------------------------------------------------ meta
     @api.get("/meta")
@@ -212,7 +223,7 @@ def create_app(output_dir: Path | None = None,
                 "heartbeat_state": heartbeat.get("state"),
                 "heartbeat_age_hours": heartbeat.get("age_hours"),
                 "last_live_success": heartbeat.get("last_live_success"),
-                "reasons": (s.status or {}).get("reasons", []),
+                "reasons": observed_status.get("reasons", []),
             },
             "pairs": pairs,
             "robustness": s.robustness,
@@ -265,17 +276,20 @@ def create_app(output_dir: Path | None = None,
     ):
         s = snap()
         combo = get_combo(s, pair, window, model)
-        etag_guard(
-            request, response, s,
-            f"series:{pair}:{window}:{model}:{start}:{end}:{fields}:{observations}",
-        )
-
+        validate_day(start, "start")
+        validate_day(end, "end")
+        if start is not None and end is not None and start > end:
+            raise HTTPException(422, detail="start must not be after end")
         wanted = (
             {f.strip() for f in fields.split(",") if f.strip()} if fields else ALL_FIELDS
         )
         unknown = wanted - ALL_FIELDS
         if unknown:
             raise HTTPException(422, detail=f"unknown fields: {sorted(unknown)}")
+        etag_guard(
+            request, response, s,
+            f"series:{pair}:{window}:{model}:{start}:{end}:{fields}:{observations}",
+        )
 
         lo, hi = 0, len(combo.dates)
         if start:
@@ -553,9 +567,14 @@ def create_app(output_dir: Path | None = None,
         stored = NS.read_status(root)
         last_run = stored.get("last_run")
         last_pub = stored.get("last_published")
+        last_run = last_run if isinstance(last_run, str) else None
+        last_pub = last_pub if isinstance(last_pub, str) else None
         age = _age(last_run)
         pub_age = _age(last_pub)
         state, reasons = NS.heartbeat_state(age)
+        saved_reasons = stored.get("reasons")
+        if isinstance(saved_reasons, list):
+            reasons += [r for r in saved_reasons if isinstance(r, str) and r not in reasons]
         days = NF.load_days(root=root)
         return {
             "state": state,
@@ -565,8 +584,7 @@ def create_app(output_dir: Path | None = None,
             "published_age_hours": None if pub_age is None else round(pub_age, 2),
             "warn_hours": NS.HEARTBEAT_WARN_HOURS,
             "crit_hours": NS.HEARTBEAT_CRIT_HOURS,
-            "reasons": reasons + [r for r in (stored.get("reasons") or [])
-                                  if r not in reasons],
+            "reasons": reasons,
             "generated_at": stored.get("generated_at"),
             "days_on_record": len(days),
         }
@@ -610,14 +628,19 @@ def create_app(output_dir: Path | None = None,
 
     @api.get("/narrative/daily")
     def narrative_daily(
+        request: Request,
         window: int = Query(DEFAULT_WINDOW), model: str = Query("ols")
     ):
         """Mount point for today's overall summary. LLM text belongs to Phase 3;
         this release returns facts and the frontend assembles a readable line."""
         s = snap()
         if window not in s.windows:
+            if "window" in request.query_params:
+                raise HTTPException(422, detail=f"window must be one of {s.windows}")
             window = s.windows[0]
         if model not in s.models:
+            if "model" in request.query_params:
+                raise HTTPException(422, detail=f"model must be one of {s.models}")
             model = s.models[0]
         movers = []
         for pair in s.pairs:
@@ -731,9 +754,9 @@ def create_app(output_dir: Path | None = None,
     @app.exception_handler(HTTPException)
     async def http_exc(request: Request, exc: HTTPException):
         if exc.status_code == 304:
-            return Response(status_code=304)
+            return Response(status_code=304, headers=exc.headers)
         return JSONResponse(
-            status_code=exc.status_code, content={"detail": exc.detail}
+            status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers
         )
 
     return app

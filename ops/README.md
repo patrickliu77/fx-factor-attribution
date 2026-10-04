@@ -31,7 +31,9 @@ Deployment-specific acceptance is recorded in the
 
 Scheduling currently runs on Windows Task Scheduler with persistent local data.
 A hosted runner would need explicit durable storage for cache, input archives and
-frozen editions. The present deployment has not implemented that storage layer.
+frozen editions. The repository includes cloud storage, snapshot and worker
+adapters under `src/fxdash/cloud/`; the present deployment has not provisioned
+that infrastructure or switched the production schedule to it.
 
 Three independent evening tasks, plus the morning and catch-up jobs described below:
 

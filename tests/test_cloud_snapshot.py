@@ -41,6 +41,27 @@ def seed(root):
     return files
 
 
+@pytest.fixture
+def readable_seed(tmp_path):
+    """Real saved attribution and FX cache, so the default snapshot path runs."""
+    import pandas as pd
+    from fxdash import config
+    from test_web import _row
+
+    seed(tmp_path)
+    day = "2026-09-11"
+    rows = [dict(_row(day, pair, 1, model=model), window=window,
+                 schema_version=config.CONTRACT_SCHEMA_VERSION)
+            for pair in config.PAIRS for window in config.WINDOWS for model in config.MODELS]
+    pd.DataFrame(rows).to_parquet(tmp_path / "outputs/contract/year=2026/part.parquet", index=False)
+    (tmp_path / "outputs/run_manifest.json").write_text(
+        json.dumps({"model_revision": config.MODEL_REVISION}), encoding="utf-8")
+    pd.DataFrame({"JPY=X": [150.0, 151.0]},
+                 index=pd.to_datetime(["2026-09-10", day])).to_parquet(
+        tmp_path / "data/cache/JPY_X.parquet")
+    return tmp_path
+
+
 def forged_bundle(path, files, *, entries=None, total=None):
     items = entries if entries is not None else [
         {"path": name, "size": len(body), "sha256": hashlib.sha256(body).hexdigest()}
@@ -226,12 +247,65 @@ def test_readiness_is_only_a_snapshot_check(tmp_path):
               for p in config.PAIRS for w in config.WINDOWS for m in config.MODELS}
     fake = SimpleNamespace(combos=combos, date_last="2026-09-11",
                            manifest={"model_revision": config.MODEL_REVISION})
-    result = P.inspect(tmp_path, snapshot_factory=lambda *a, **kw: fake)
+    def factory(output_dir, *, cache_dir):
+        assert output_dir == tmp_path / "outputs"
+        assert cache_dir == tmp_path / "data/cache"
+        return fake
+
+    result = P.inspect(tmp_path, snapshot_factory=factory)
     assert result["state"] == "ready_for_shadow"
     assert result["combinations"] == 54
     assert result["network_called"] is result["email_sent"] is False
     assert result["email_configuration_valid"] is False
     assert "not_live_or_delivery" in result["scope"]
+
+
+def test_default_preflight_does_not_fetch_display_data_or_use_network(readable_seed, monkeypatch):
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append(True)
+        pytest.fail("Saved seed checks must not fetch DXY or call network transports")
+
+    # The real FX cache makes the previous Snapshot -> MarketData path reach DXY.
+    # Failed is not caught by Snapshot's display-layer fallback or inspect's
+    # unreadable-snapshot handler, so a swallowed transport exception cannot pass.
+    monkeypatch.setattr("fxdash.web.market._fetch_dxy", forbidden)
+    monkeypatch.setattr("requests.sessions.Session.request", forbidden)
+    monkeypatch.setattr("urllib.request.urlopen", forbidden)
+    monkeypatch.setattr("socket.socket.connect", forbidden)
+    monkeypatch.setattr("socket.create_connection", forbidden)
+    monkeypatch.setattr("socket.getaddrinfo", forbidden)
+
+    result = P.inspect(readable_seed)
+    assert result["state"] == "ready_for_shadow"
+    assert result["combinations"] == 54
+    assert result["network_called"] is False
+    assert calls == []
+
+
+def test_snapshot_market_is_optional_and_enabled_by_default(readable_seed, monkeypatch):
+    import pandas as pd
+    from fxdash.web.store import Snapshot
+
+    calls = []
+    dxy = pd.Series([100.0, 101.0], index=pd.to_datetime(["2026-09-10", "2026-09-11"]))
+
+    def fetch():
+        calls.append(True)
+        return dxy
+
+    monkeypatch.setattr("fxdash.web.market._fetch_dxy", fetch)
+    outputs, cache = readable_seed / "outputs", readable_seed / "data/cache"
+    saved = Snapshot(outputs, cache_dir=cache, include_market=False)
+    assert saved.market is None
+    assert calls == []
+    web = Snapshot(outputs, cache_dir=cache)
+    assert web.market.available
+    assert any(item["code"] == "DXY" for item in web.market.board)
+    assert calls == [True]
+    assert saved.date_last == web.date_last
+    assert set(saved.combos) == set(web.combos)
 
 
 @pytest.mark.parametrize("problem", ["missing_seed", "wrong_model", "missing_combo", "mixed_dates", "offset", "unfrozen"])

@@ -21,11 +21,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -37,6 +40,7 @@ from .market import RANGES as MARKET_RANGES
 
 DEFAULT_OUT = REPO_ROOT / "site"
 API_PREFIX = "/api"
+log = logging.getLogger(__name__)
 
 
 def file_for(request: str) -> str:
@@ -139,14 +143,47 @@ def remove_build_tree(target: Path) -> None:
 
 def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
           now: datetime | None = None) -> dict:
-    """Render the site into `out`, which is wiped first. Returns the manifest that
-    is also written as build.json."""
+    """Render one snapshot and replace `out` after the complete export succeeds.
+
+    Returns the manifest that is also written as build.json. Failed rendering
+    leaves the previous site available.
+    """
     out = validate_target(out, app=app, output_dir=output_dir, cache_dir=cache_dir)
-    # Fail an unreadable snapshot before removing the previous generated site.
     app = app or create_app(output_dir, cache_dir=cache_dir)
-    if out.exists():
-        remove_build_tree(out)
-    out.mkdir(parents=True)
+    if out.exists() and not out.is_dir():
+        raise ValueError("build target must be a directory")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f".{out.name}.build-", dir=out.parent) as folder:
+        staged = Path(folder)
+        with app.state.store.pin():
+            manifest = _render(staged, app=app, now=now)
+        _install_build(staged, out)
+    return manifest
+
+
+def _install_build(staged: Path, out: Path) -> None:
+    """Windows cannot replace a nonempty directory; keep a rollback copy."""
+    backup = out.with_name(f".{out.name}.previous-{uuid.uuid4().hex}")
+    had_previous = out.exists()
+    if had_previous:
+        out.rename(backup)
+    try:
+        staged.rename(out)
+    except BaseException:
+        if had_previous:
+            backup.rename(out)
+        raise
+    if had_previous:
+        try:
+            remove_build_tree(backup)
+        except OSError as exc:
+            # Installation succeeded. A locked old file should not report the
+            # complete new export as failed; keep its backup for later cleanup.
+            log.warning("previous build retained at %s: %s", backup, exc)
+
+
+def _render(out: Path, *, app, now: datetime | None = None) -> dict:
+    """Write the export into a private staging directory."""
 
     # static assets as they are. build.json is never taken from the source tree:
     # its presence is what tells app.js it is running from a build
@@ -168,7 +205,7 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
     briefing = None
     media_files = []
     for request in request_set(meta):
-        response = client.get(API_PREFIX + request)
+        response = meta_response if request == "/meta" else client.get(API_PREFIX + request)
         response.raise_for_status()
         rel = file_for(request)
         target = out / rel
@@ -229,7 +266,7 @@ def build(out: Path, *, app=None, output_dir=None, cache_dir=None,
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Render the dashboard as a static site.")
-    parser.add_argument("--out", default=str(DEFAULT_OUT), help="target directory, wiped first")
+    parser.add_argument("--out", default=str(DEFAULT_OUT), help="target directory, replaced after a complete build")
     parser.add_argument("--output-dir", default=None,
                         help="pipeline outputs/ to read (default: the repository's)")
     parser.add_argument("--cache-dir", default=None,

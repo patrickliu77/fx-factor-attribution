@@ -13,11 +13,13 @@ often it runs, it says nothing about the scheduler working.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pandas as pd
 
 from .config import HEARTBEAT_CRIT_HOURS, HEARTBEAT_WARN_HOURS, OUTPUT_DIR
 from .data.base import record
+from .task_runner import CLOCK_DIAGNOSTIC, stamp as utc_stamp
 
 HEARTBEAT_PATH = OUTPUT_DIR / "heartbeat.json"
 
@@ -40,7 +42,8 @@ def read() -> dict:
     if not HEARTBEAT_PATH.exists():
         return {}
     try:
-        return json.loads(HEARTBEAT_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(HEARTBEAT_PATH.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
     except Exception:
         return {}
 
@@ -51,9 +54,22 @@ def assess(now=None, payload=None) -> dict:
     Never alarms when no live run has ever happened; it just states that no record
     exists -- a freshly installed repo should not start out red.
     """
+    recorded = HEARTBEAT_PATH.exists() if payload is None else (not isinstance(payload, dict) or bool(payload))
     payload = read() if payload is None else payload
+    unreadable = {
+        "state": "red",
+        "last_live_success": None,
+        "age_hours": None,
+        "note": "heartbeat record unreadable",
+        "warn_hours": HEARTBEAT_WARN_HOURS,
+        "crit_hours": HEARTBEAT_CRIT_HOURS,
+    }
+    if not isinstance(payload, dict):
+        return unreadable
     last = payload.get("last_live_success")
     if not last:
+        if recorded:
+            return unreadable
         return {
             "state": "green",
             "last_live_success": None,
@@ -61,9 +77,19 @@ def assess(now=None, payload=None) -> dict:
             "note": "no live run recorded yet",
         }
 
-    now = pd.Timestamp(now or pd.Timestamp.now())
-    age = (now - pd.Timestamp(last)).total_seconds() / 3600.0
-    if age > HEARTBEAT_CRIT_HOURS:
+    # Historical naive timestamps use the host's local zone, as in the live
+    # supervisor. New aware values must also be comparable to a naive caller.
+    try:
+        observed = utc_stamp(str(pd.Timestamp(now if now is not None else datetime.now(timezone.utc))))
+    except (TypeError, ValueError):
+        observed = None
+    completed = utc_stamp(last)
+    if observed is None or completed is None:
+        return unreadable
+    age = (observed - completed).total_seconds() / 3600.0
+    if age < 0:
+        state, note = "red", CLOCK_DIAGNOSTIC
+    elif age > HEARTBEAT_CRIT_HOURS:
         state, note = "red", f"suspected scheduler stall: {age:.0f} hours without a successful live run"
     elif age > HEARTBEAT_WARN_HOURS:
         state, note = "yellow", f"suspected scheduler stall: {age:.0f} hours without a successful live run"

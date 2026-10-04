@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -45,7 +46,7 @@ DXY_TTL_S = 30 * 60
 # be a lie.
 STALE_LIMIT_DAYS = 7
 _dxy_lock = threading.Lock()
-_dxy_cache = {"series": None, "at": 0.0}
+_dxy_cache = {"series": None, "at": 0.0, "attempted": False}
 
 # display board. These were not picked to pad it out: oil, copper, gold, VIX and
 # the US 10Y are all registered factors of this model (oil for NOK/CAD, copper
@@ -64,38 +65,42 @@ BOARD = [
 
 
 def _fetch_dxy():
-    """Fetch the DXY daily series. On failure return None, the board simply has
-    one item fewer, and nothing is raised.
+    """Fetch the DXY daily series. On failure retain a saved series if available,
+    otherwise return None, and nothing is raised.
 
     Carries a 30-minute in-memory TTL: snapshot rebuilds (startup + the nightly
     hot reload) pass through here and should not hit the network every time.
     **Nothing is written to disk**; data/ stays read-only to the web layer.
     """
-    now = time.monotonic()
     with _dxy_lock:
+        now = time.monotonic()
         cached = _dxy_cache["series"]
-        if cached is not None and now - _dxy_cache["at"] < DXY_TTL_S:
+        attempted = cached is not None or _dxy_cache.get("attempted", False)
+        if attempted and now - _dxy_cache["at"] < DXY_TTL_S:
             return cached
-    try:
-        import yfinance as yf
-        frame = yf.download(DXY_SYMBOL, period="10y", interval="1d",
-                            progress=False, auto_adjust=False, threads=False)
-        if frame is None or frame.empty:
-            raise ValueError("empty frame")
-        close = frame["Close"]
-        if hasattr(close, "columns"):
-            close = close.iloc[:, 0]
-        close = close.dropna().astype(float)
-        if len(close) < 2:
-            raise ValueError("too short")
-    except Exception as exc:
-        log.warning("DXY fetch failed, the board skips this item: %s", exc)
-        with _dxy_lock:
-            return _dxy_cache["series"]  # keep using the old value if there is one
-    with _dxy_lock:
-        _dxy_cache["series"] = close
-        _dxy_cache["at"] = now
-    return close
+        # Keep the refresh inside the lock: concurrent snapshot builds share
+        # one fetch, and a late response cannot replace a newer cached series.
+        try:
+            import yfinance as yf
+            frame = yf.download(DXY_SYMBOL, period="10y", interval="1d",
+                                progress=False, auto_adjust=False, threads=False)
+            if frame is None or frame.empty:
+                raise ValueError("empty frame")
+            close = frame["Close"]
+            if hasattr(close, "columns"):
+                close = close.iloc[:, 0]
+            close = _daily_index(close)
+            if len(close) < 2:
+                raise ValueError("too short")
+        except Exception as exc:
+            log.warning("DXY fetch failed, retaining any saved series: %s", exc)
+        else:
+            _dxy_cache["series"] = close
+        # Cool down both successful and failed attempts, including a cold miss.
+        # The quote's original trading-day labels remain in the saved series.
+        _dxy_cache["attempted"] = True
+        _dxy_cache["at"] = time.monotonic()
+        return _dxy_cache["series"]
 
 
 PAIR_LABEL = {
@@ -149,10 +154,12 @@ def _daily_index(series):
     permanently a day behind everything else); and comparing a tz-aware index
     with a naive Timestamp raises, so one broken source wipes out the whole board.
     """
-    idx = pd.to_datetime(series.index)
+    idx = pd.to_datetime(series.index, errors="coerce")
     if getattr(idx, "tz", None) is not None:
         idx = idx.tz_localize(None)
-    out = pd.Series(series.to_numpy(dtype=float), index=idx.normalize())
+    values = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+    out = pd.Series(values, index=idx.normalize())
+    out = out[~out.index.isna() & np.isfinite(values)]
     return out[~out.index.duplicated(keep="last")].sort_index()
 
 
@@ -168,7 +175,7 @@ class MarketData:
     frontend takes the placeholder branch."""
 
     def __init__(self, cache_dir=None):
-        self.cache_dir = cache_dir or CACHE_DIR
+        self.cache_dir = Path(cache_dir or CACHE_DIR)
         self.levels = {}
         self.board = []
         self.session_date = None
@@ -177,8 +184,12 @@ class MarketData:
             series = self._read(ticker)
             if series is None:
                 continue
+            series = series[series > 0]
             if invert:
-                series = 1.0 / series.replace(0.0, np.nan).dropna()
+                series = 1.0 / series
+                series = series[np.isfinite(series.to_numpy(dtype=float))]
+            if len(series) < 2:
+                continue
             self.levels[pair] = series
 
         self.available = bool(self.levels)
@@ -195,10 +206,12 @@ class MarketData:
 
         for pair in PAIRS:
             if pair in self.levels:
-                self.board.append(self._quote(
+                quote = self._quote(
                     PAIR_LABEL.get(pair, pair), pair, self.levels[pair],
                     kind="fx", digits=4, pair=pair, asof=session,
-                ))
+                )
+                if quote is not None:
+                    self.board.append(quote)
         dxy = self._quote("Dollar Index", "DXY", _fetch_dxy(),
                           kind="index", digits=2, asof=session)
         if dxy is not None:
@@ -217,15 +230,13 @@ class MarketData:
             return None
         try:
             frame = pd.read_parquet(path)  # open and close fast
+            if frame.empty or not len(frame.columns):
+                return None
+            series = _daily_index(frame.iloc[:, 0])
         except Exception as exc:
             log.warning("market cache unreadable %s: %s", path.name, exc)
             return None
-        if frame.empty or not len(frame.columns):
-            return None
-        series = frame.iloc[:, 0].astype(float)
-        series.index = pd.to_datetime(series.index)
-        series = series[np.isfinite(series.to_numpy(dtype=float))]
-        return series.sort_index() if len(series) >= 2 else None
+        return series if len(series) >= 2 else None
 
     @staticmethod
     def _quote(label, code, series, *, kind, digits, pair=None, asof=None):
@@ -235,6 +246,10 @@ class MarketData:
         try:
             series = _daily_index(series)
             if asof is not None:
+                asof = pd.Timestamp(asof)
+                if asof.tz is not None:
+                    asof = asof.tz_localize(None)
+                asof = asof.normalize()
                 series = series[series.index <= asof]
         except Exception as exc:
             log.warning("board item %s unavailable: %s", code, exc)

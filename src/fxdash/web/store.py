@@ -22,6 +22,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 import threading
 import time
 from pathlib import Path
@@ -139,7 +141,8 @@ class Snapshot:
     """One immutable data snapshot. Derived caches hang off the instance, so
     swapping the reference invalidates all of them at once."""
 
-    def __init__(self, output_dir: Path, cache_dir: Path | None = None):
+    def __init__(self, output_dir: Path, cache_dir: Path | None = None, *,
+                 include_market: bool = True):
         self.output_dir = Path(output_dir)
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.loaded_at = pd.Timestamp.now().isoformat(timespec="seconds")
@@ -184,15 +187,18 @@ class Snapshot:
         self.manifest = self._read_json("run_manifest.json")
         self.coverage = self._read_json("coverage.json")
         self.pca = self._read_pca()
-        # market data serves only the ticker and the trend chart; if it cannot be
-        # read, degrade it wholesale and never drag down the attribution snapshot
-        try:
-            self.market = MarketData(self.cache_dir)
-        except Exception as exc:
-            log.warning(
-                "market layer unavailable, ticker and trend chart fall back to "
-                "placeholders: %s", exc)
-            self.market = None
+        # Saved-data checks do not need the display layer, whose DXY quote can
+        # fetch from the network. Web snapshots keep loading it by default.
+        self.market = None
+        if include_market:
+            # If market data cannot be read, degrade it wholesale and never drag
+            # down the attribution snapshot.
+            try:
+                self.market = MarketData(self.cache_dir)
+            except Exception as exc:
+                log.warning(
+                    "market layer unavailable, ticker and trend chart fall back to "
+                    "placeholders: %s", exc)
 
         signature = files_signature(self.output_dir)
         digest = hashlib.sha1(repr(signature).encode()).hexdigest()[:8]
@@ -289,6 +295,7 @@ class DataStore:
         self._last_check = time.monotonic()
         self._next_retry = 0.0
         self._lock = threading.Lock()
+        self._pinned_snapshot = ContextVar(f"fxdash_snapshot_{id(self)}", default=None)
 
     def _stat_status(self) -> int:
         path = self.output_dir / "status.json"
@@ -297,6 +304,9 @@ class DataStore:
     def current(self) -> Snapshot:
         """Request entry point. Cheap check of the commit marker, trigger a reload
         when needed."""
+        pinned = self._pinned_snapshot.get()
+        if pinned is not None:
+            return pinned
         now = time.monotonic()
         if now - self._last_check >= CHECK_INTERVAL_S:
             self._last_check = now
@@ -311,6 +321,20 @@ class DataStore:
                     finally:
                         self._lock.release()
         return self.snapshot
+
+    @contextmanager
+    def pin(self):
+        """Use one snapshot in this context, without pausing other web callers.
+
+        TestClient propagates this context to its request handlers, so a static
+        export cannot cross a hot reload between API responses.
+        """
+        snapshot = self.current()
+        token = self._pinned_snapshot.set(snapshot)
+        try:
+            yield snapshot
+        finally:
+            self._pinned_snapshot.reset(token)
 
     def _reload(self, status_mtime: int) -> None:
         try:

@@ -6,6 +6,7 @@ table still has values, and nothing anywhere says "it did not run today".
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import pytest
@@ -93,7 +94,64 @@ def test_healthy_pulse_keeps_status_green():
 
 def test_corrupt_heartbeat_file_is_survivable():
     heartbeat.HEARTBEAT_PATH.write_text("{ not json", encoding="utf-8")
-    assert heartbeat.assess(now=NOW)["state"] == GREEN
+    pulse = heartbeat.assess(now=NOW)
+    assert pulse["state"] == RED
+    assert pulse["note"] == "heartbeat record unreadable"
+
+
+@pytest.mark.parametrize("payload", [None, [], {}, {"mode": "live"},
+    {"last_live_success": "not-a-date"}, {"last_live_success": []},
+    {"last_live_success": 1}, {"last_live_success": "0001-01-01T00:00:00+14:00"}])
+def test_existing_invalid_heartbeat_is_red_without_raising(payload):
+    heartbeat.HEARTBEAT_PATH.write_text(json.dumps(payload), encoding="utf-8")
+    pulse = heartbeat.assess(now=NOW)
+    assert pulse["state"] == RED
+    assert pulse["age_hours"] is None
+    assert pulse["note"] == "heartbeat record unreadable"
+
+
+def test_aware_heartbeat_accepts_naive_host_local_observation():
+    observed = datetime(2026, 9, 8, 12)
+    completed = observed.astimezone(timezone.utc) - timedelta(hours=2)
+    pulse = heartbeat.assess(now=observed, payload={"last_live_success": completed.isoformat()})
+    assert pulse["state"] == GREEN
+    assert pulse["age_hours"] == pytest.approx(2)
+
+
+def test_historical_naive_heartbeat_accepts_aware_observation():
+    completed = datetime(2026, 9, 8, 12)
+    observed = completed.astimezone(timezone.utc) + timedelta(hours=2)
+    pulse = heartbeat.assess(now=observed, payload={"last_live_success": completed.isoformat()})
+    assert pulse["state"] == GREEN
+    assert pulse["age_hours"] == pytest.approx(2)
+
+
+def test_aware_beat_can_be_assessed_with_default_clock():
+    heartbeat.beat("live", when=datetime.now(timezone.utc))
+    pulse = heartbeat.assess()
+    assert pulse["state"] == GREEN
+    assert 0 <= pulse["age_hours"] < 1
+
+
+def test_invalid_observation_is_a_red_diagnostic():
+    pulse = heartbeat.assess(now="not-a-date", payload={"last_live_success": NOW.isoformat()})
+    assert pulse["state"] == RED
+    assert pulse["age_hours"] is None
+
+
+@pytest.mark.parametrize("lead", [timedelta(microseconds=1), timedelta(hours=120)])
+def test_future_heartbeat_is_red_with_a_clock_diagnostic(lead):
+    observed=datetime(2026,10,4,12,tzinfo=timezone.utc)
+    pulse=heartbeat.assess(now=observed,payload={"last_live_success":(observed+lead).isoformat()})
+    assert pulse["state"]==RED
+    assert pulse["note"]=="heartbeat time is ahead of observation; check the system clock"
+
+
+def test_heartbeat_equal_to_observation_is_valid():
+    observed=datetime(2026,10,4,12,tzinfo=timezone.utc)
+    pulse=heartbeat.assess(now=observed,payload={"last_live_success":observed.isoformat()})
+    assert pulse["state"]==GREEN
+    assert pulse["age_hours"]==0
 
 
 def test_humanise_reads_naturally():

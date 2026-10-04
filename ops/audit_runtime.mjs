@@ -35,7 +35,21 @@ try {
       document.querySelector('#runtime-status').innerHTML=runtimeHtml(fixture,{mode:'static'});
     },fixture);
     assert.equal(await status.locator('details').getAttribute('data-runtime-state'),'interrupted');
-    results.push({lang,width,failure_visible:true,stale_attempt:true});
+    await page.evaluate(async fixture=>{
+      const {runtimeHtml}=await import(new URL('runtime-status.js',document.baseURI));
+      fixture.runtime.latest_attempt={state:'succeeded',started_at:fixture.runtime.observed_at};
+      const later=new Date(Date.parse(fixture.runtime.last_success_at)+73*3600000);
+      document.querySelector('#runtime-status').innerHTML=runtimeHtml(fixture,{mode:'static'},later);
+    },fixture);
+    assert.equal(await status.locator('details').getAttribute('data-runtime-state'),'succeeded');
+    assert.equal(await status.locator('details').getAttribute('data-runtime-tone'),'red');
+    assert.equal(await status.locator('details').getAttribute('data-runtime-freshness'),'stale');
+    assert.ok((await status.locator('summary').innerText()).includes(lang==='zh'?'超过 72 小时':'over 72 hours old'));
+    await status.locator('summary').click();
+    assert.ok((await status.innerText()).includes(lang==='zh'?'最近计算成功':'Last attempt succeeded'));
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await status.screenshot({path:path.join(out,`runtime-stale-${lang}-${width}.png`)});
+    results.push({lang,width,failure_visible:true,stale_attempt:true,stale_success_visible:true});
     await context.close();
   }
   assert.deepEqual(errors,[]);

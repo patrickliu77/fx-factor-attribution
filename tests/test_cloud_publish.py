@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+from tempfile import TemporaryDirectory
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -28,14 +30,28 @@ def candidate(tmp_path):
     path = tmp_path / "candidate"
     shutil.copytree(B.STATIC_DIR, path)
     meta = {"pairs": ["USDEUR"], "windows": [126], "models": ["ols"],
-            "default_window": 126, "default_model": "ols"}
+            "default_window": 126, "default_model": "ols", "data_version": "fixture-version",
+            "date_range": {"first": "2026-01-07", "last": "2026-01-07"}, "model_revision": "fixture-model"}
     requests = {r: B.file_for(r) for r in B.request_set(meta)}
     for request, name in requests.items():
         target = path / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(meta if request == "/meta" else {}), encoding="utf-8")
+        payload = {"as_of": "2026-01-07", "data_version": "fixture-version", "model_revision": "fixture-model"}
+        params = parse_qs(urlsplit(request).query)
+        payload.update({key: int(params[key][0]) if key == "window" else params[key][0]
+                        for key in ("window", "model") if key in params})
+        if request == "/meta":
+            payload = meta
+        elif request == "/status":
+            payload["server"] = {"data_version": "fixture-version"}
+        elif request.startswith("/overview?"):
+            payload["summary"] = {key: payload[key] for key in ("as_of", "window", "model")}
+        elif request.startswith("/pairs/") and "/series?" in request:
+            payload.update(pair=urlsplit(request).path.split("/")[2], dates=["2026-01-07"])
+        target.write_text(json.dumps(payload), encoding="utf-8")
     manifest = {"requests": requests, "files": sorted(requests.values()), "media_files": [],
-                "built_at": "2026-01-08T17:00:00+00:00", "as_of": "2026-01-07"}
+                "built_at": "2026-01-08T17:00:00+00:00", "as_of": "2026-01-07",
+                "data_version": "fixture-version", "model_revision": "fixture-model", "briefing": None}
     (path / "build.json").write_text(json.dumps(manifest), encoding="utf-8")
     (path / ".nojekyll").write_bytes(b"")
     return path
@@ -93,6 +109,148 @@ def test_existing_builder_produces_an_accepted_export(site_app, tmp_path):
     report = P.inspect(path)
     staged = P.stage(path, tmp_path / "actual-stage", expected_sha256=report["sha256"])
     assert report["files"] > len(manifest["files"]) and staged.sha256 == report["sha256"]
+
+
+@pytest.fixture
+def built_candidate(tmp_path, monkeypatch, request):
+    """An actual isolated export with a frozen edition and synthetic voice bytes."""
+    from fxdash.web import market
+    from fxdash.narrative import audio_briefing
+    from test_audio_briefing import saved, prepare
+    from test_morning import moment
+
+    # Short, owned TEMP paths also support Windows installations without
+    # long-path support: media paths contain a full 64-character edition hash.
+    with TemporaryDirectory(prefix="fxp-") as folder:
+        root = Path(folder) / "pipeline"
+        root.mkdir()
+        cache = Path(folder) / "empty-cache"
+        monkeypatch.setattr(market, "CACHE_DIR", cache)
+        monkeypatch.setattr(audio_briefing, "backend", lambda: "windows")
+        edition, _, _ = saved(root)
+        if getattr(request, "param", True):
+            prepare(root, edition)
+        path = Path(folder) / "candidate"
+        B.build(path, app=B.create_app(root, cache_dir=cache), now=moment(17, 2))
+        assert P.inspect(path)["sha256"]
+        yield path
+
+
+@pytest.mark.parametrize("mutation", [
+    "manifest_version", "manifest_as_of", "manifest_model", "meta_version", "status_version", "status_model",
+    "overview_version", "overview_as_of", "overview_summary", "overview_model", "weekly_as_of", "daily_window",
+    "comparison_model", "pair_identity", "series_as_of", "drivers_version", "briefing_identity", "audio_bytes",
+    "audio_hash", "audio_identity", "overview_runtime",
+])
+def test_actual_export_identity_mismatch_blocks_review_and_staging(built_candidate, tmp_path, monkeypatch, mutation):
+    path = built_candidate
+    manifest = json.loads((path / "build.json").read_bytes())
+    name = "build.json"
+    if mutation.startswith("meta_"):
+        name = "api/meta.json"
+    elif mutation.startswith("status_"):
+        name = "api/status.json"
+    elif mutation.startswith("overview_"):
+        name = B.file_for("/overview?window=126&model=ols")
+    elif mutation == "weekly_as_of":
+        name = B.file_for("/attribution/weekly?window=126&model=ols")
+    elif mutation == "daily_window":
+        name = B.file_for("/narrative/daily?window=126&model=ols")
+    elif mutation == "comparison_model":
+        name = B.file_for("/research/comparison?window=126")
+    elif mutation in {"pair_identity", "series_as_of"}:
+        name = B.file_for("/pairs/USDEUR/series?window=126&model=ols&observations=252")
+    elif mutation in {"drivers_version", "audio_hash", "audio_identity"}:
+        name = "api/news.json"
+    value = json.loads((path / name).read_bytes())
+    if mutation == "audio_bytes":
+        audio = next(item for item in manifest["media_files"] if item.endswith("/en.mp3"))
+        (path / audio).write_bytes(b"ID3" + b"corrupted-fixture-bytes" * 100)
+    else:
+        if mutation == "status_version":
+            value["server"]["data_version"] = "different-version"
+        elif mutation == "drivers_version":
+            value["drivers"]["data_version"] = "different-version"
+        elif mutation.endswith("_version"):
+            value["data_version"] = "different-version"
+        elif mutation in {"manifest_model", "status_model", "comparison_model"}:
+            value["model_revision"] = "different-model"
+        elif mutation.endswith("_as_of") and mutation != "series_as_of":
+            value["as_of"] = "2027-01-01"
+        elif mutation == "series_as_of":
+            value["dates"][-1] = "2027-01-01"
+        elif mutation == "overview_summary":
+            value["summary"]["as_of"] = "2027-01-01"
+        elif mutation == "overview_model":
+            value["model"] = "ridge"
+        elif mutation == "overview_runtime":
+            value["status_digest"]["runtime"]["attribution_as_of"] = "2027-01-01"
+        elif mutation == "daily_window":
+            value["window"] = 252
+        elif mutation == "pair_identity":
+            value["pair"] = "USDJPY"
+        elif mutation == "briefing_identity":
+            value["briefing"]["edition_hash"] = "0" * 64
+        elif mutation == "audio_hash":
+            value["briefing"]["audio"]["languages"]["en"]["audio_sha256"] = "0" * 64
+        elif mutation == "audio_identity":
+            value["briefing"]["audio"]["languages"]["en"]["url"] = next(
+                item for item in manifest["media_files"] if item.endswith("/zh.mp3"))
+        (path / name).write_text(json.dumps(value), encoding="utf-8")
+
+    monkeypatch.setattr(P, "push", lambda *a, **kw: pytest.fail("An invalid candidate must not reach push"))
+    monkeypatch.setattr("fxdash.narrative.subscriptions.Provider",
+                        lambda *a, **kw: pytest.fail("An invalid candidate must not send mail"))
+    with pytest.raises(StateError, match="publication_identity_mismatch"):
+        P.inspect(path)
+    with pytest.raises(StateError, match="publication_identity_mismatch"):
+        P.stage(path, tmp_path / "rejected-stage", expected_sha256="0" * 64,
+                runner=lambda *a: pytest.fail("An invalid candidate must not run Git"))
+    assert not (tmp_path / "rejected-stage").exists()
+
+
+@pytest.mark.parametrize("built_candidate", [False], indirect=True)
+def test_actual_text_only_edition_remains_publishable(built_candidate):
+    manifest = json.loads((built_candidate / "build.json").read_bytes())
+    assert manifest["briefing"] and manifest["media_files"] == []
+    assert P.inspect(built_candidate)["sha256"]
+
+
+def _historical_audio(path):
+    import hashlib
+    manifest = json.loads((path / "build.json").read_bytes())
+    news = json.loads((path / "api/news.json").read_bytes())
+    historical = {"mode": "edition", "date": "2025-12-31", "edition_hash": "a" * 64,
+                  "data_version": "older-frozen-version", "audio": {"languages": {}}}
+    selected = next(item for item in manifest["media_files"] if item.endswith("/en.mp3"))
+    media = f'media/briefing/edition/{historical["date"]}/{historical["edition_hash"]}/audio-v1/en.mp3'
+    target = path / media
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes((path / selected).read_bytes())
+    historical["audio"]["languages"]["en"] = {
+        "state": "ready", "url": media, "audio_sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
+    news["briefing_archive"]["history"].append(historical)
+    # Older voice files retained by the builder need not be selected by a
+    # current edition; their allowlisted paths remain valid export members.
+    retained = media.replace("audio-v1", "audio-v2")
+    (path / retained).parent.mkdir(parents=True, exist_ok=True)
+    (path / retained).write_bytes(target.read_bytes())
+    manifest["media_files"] = sorted(manifest["media_files"] + [media, retained])
+    (path / "api/news.json").write_text(json.dumps(news), encoding="utf-8")
+    (path / "build.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return target
+
+
+def test_frozen_history_and_unselected_old_voice_files_remain_publishable(built_candidate):
+    _historical_audio(built_candidate)
+    assert P.inspect(built_candidate)["sha256"]
+
+
+def test_corrupted_ready_historical_audio_blocks_publication(built_candidate):
+    historical = _historical_audio(built_candidate)
+    historical.write_bytes(b"corrupted historical fixture")
+    with pytest.raises(StateError, match="publication_identity_mismatch"):
+        P.inspect(built_candidate)
 
 
 def test_valid_build_is_reviewable_and_staged_without_changing_source(candidate, tmp_path):
@@ -236,7 +394,9 @@ def test_missing_or_default_actions_tokens_cannot_publish(candidate, tmp_path, t
 def test_staged_file_mutation_blocks_all_network_operations(candidate, tmp_path):
     staged = prepared(candidate, tmp_path)
     path = staged.directory / "api/news.json"
-    path.write_bytes(b'{"changed":true}')
+    value = json.loads(path.read_bytes())
+    value["changed"] = True
+    path.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(StateError, match="publication_changed_since_review"):
         P.push(staged, "a" * 40, token_provider=lambda: TOKEN,
                runner=lambda *a: pytest.fail("No network after changed files"))

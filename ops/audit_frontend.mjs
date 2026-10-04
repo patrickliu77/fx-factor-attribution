@@ -88,7 +88,8 @@ try {
     if (await page.locator('.brief-preview').count()) {
       const brief = page.locator('.brief-preview');
       assert.ok((await page.locator('[data-brief-history]').innerText()).includes(feed.briefing.date));
-      assert.equal(await brief.locator('.brief-asof').isVisible(),feed.briefing.attribution_as_of!==feed.briefing.date);
+      const hasRecap=feed.briefing.recap?.version==='market-recap-v1' && !!feed.briefing.recap.text?.[lang];
+      assert.equal(await brief.locator('.brief-asof').isVisible(),!hasRecap && feed.briefing.attribution_as_of!==feed.briefing.date);
       await brief.locator('.brief-source-details > summary').click();
       for (const detail of await brief.locator('.brief-note').all()) {
         await detail.locator('summary').click();

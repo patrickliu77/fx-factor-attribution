@@ -26,6 +26,7 @@ export const DICT = {
 
   "pulse.label": { en: "NARRATIVE", zh: "叙事层" },
   "pulse.never": { en: "never run", zh: "从未运行" },
+  "pulse.clock": { en: "Clock mismatch", zh: "时钟不一致" },
   "pulse.unreachable": { en: "unreachable", zh: "读不到" },
   "pulse.ok": { en: "Narrative layer ran on schedule.", zh: "叙事层按时跑过了。" },
   "pulse.age": { en: "age", zh: "距今" },

@@ -55,7 +55,12 @@ def inspect(root, *, snapshot_factory=None):
         profile = json.loads((root / "outputs/alignment/profile.json").read_text(encoding="utf-8"))
         if not frozen_profile(profile):
             checks.append("frozen_alignment_mismatch")
-        saved = (snapshot_factory or Snapshot)(root / "outputs", cache_dir=root / "data/cache")
+        # The display-only market layer can fetch DXY. A seed readiness check
+        # reads saved attribution only; preserve the injected factory interface.
+        if snapshot_factory is None:
+            saved = Snapshot(root / "outputs", cache_dir=root / "data/cache", include_market=False)
+        else:
+            saved = snapshot_factory(root / "outputs", cache_dir=root / "data/cache")
         expected = {(p, w, m) for p in config.PAIRS for w in config.WINDOWS for m in config.MODELS}
         if set(saved.combos) != expected:
             checks.append("attribution_combinations_mismatch")
