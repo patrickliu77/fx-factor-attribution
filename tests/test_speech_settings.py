@@ -94,6 +94,9 @@ def test_scheduled_entry_refreshes_settings_before_dispatch(tmp_path, monkeypatc
     entry = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(entry)
     monkeypatch.setattr(entry,'__file__',str(tmp_path/'ops'/(entry_name+'.py')))
+    # Isolate speech refresh ordering from the host interpreter and installed tools.
+    monkeypatch.setattr(entry.R,'runtime_status',lambda repo:{'state':'ready'})
+    monkeypatch.setattr(entry.R,'bootstrap_tools',lambda:None)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys,'path',list(sys.path))
     monkeypatch.setattr(sys,'stdout',sys.stdout)
