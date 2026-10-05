@@ -53,6 +53,27 @@ contract is made of. A narrative failure therefore never changes
 
 ## Registering the tasks
 
+Create a persistent project environment before registration. Temporary validation
+environments are rejected by the registration helper:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\setup_runtime.ps1 -BasePython '<persistent Python 3.13 executable>' -WhatIf
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\setup_runtime.ps1 -BasePython '<persistent Python 3.13 executable>'
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\configure_delivery_credentials.ps1
+.\.venv\Scripts\python.exe ops\check_delivery_runtime.py
+```
+
+The setup installs the unchanged exact requirements into `.venv`, verifies the
+base installation and dependencies, and makes no task changes. The credential
+helper uses hidden local prompts and retains existing settings by default. Add
+`-EnableAzureAudio` only when restoring an approved Azure Speech account; saving
+credentials alone does not enable audio or establish authentication. FFmpeg and
+ffprobe must be available to the task user.
+
+The read-only check writes `outputs/automation/runtime-readiness.json` with
+presence flags and task metadata. It never stores keys or calls providers.
+Open a new terminal if it reports `fresh_shell_required` before registering.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File ops\register_task.ps1 -WhatIf
 powershell -ExecutionPolicy Bypass -File ops\register_task.ps1
@@ -61,14 +82,13 @@ powershell -ExecutionPolicy Bypass -File ops\register_narrative_task.ps1 -WhatIf
 powershell -ExecutionPolicy Bypass -File ops\register_narrative_task.ps1
 ```
 
-All three scripts (the two registrations and `serve.ps1`) derive the repository
-path from their own location and resolve the interpreter at run time, in this
-order: an explicit `-Python <path>`; otherwise the first `python` (or `python3`)
-on PATH that can import this project's dependencies; otherwise
-`%USERPROFILE%\miniconda3\python.exe`. The probe imports rather than checking
-that a file exists, because the python on PATH is often another project's
-environment or the Microsoft Store stub. Each script prints which interpreter
-it chose and why, so run with `-WhatIf` first when in doubt. `-At` changes the
+All five task registration scripts derive the repository path from their own
+location. An explicit persistent `-Python <path>` wins; otherwise the project's
+`.venv` is selected. The shared check verifies Python 3.13, its persistent base,
+exact dependency versions and timezone data before registration. `serve.ps1`
+also prefers `.venv`, with its existing PATH/Miniconda fallback for interactive
+use. Each script prints which interpreter it chose and why, so run with `-WhatIf`
+first when in doubt. `-At` changes the
 time. After registering, each script exports the task XML and checks the settings that
 matter, then prints the whole document: checking only the settings the script
 sets is not enough, because the one that has actually caused a failure here

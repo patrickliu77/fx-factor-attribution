@@ -5,7 +5,7 @@ An uncertain submission is never repeated automatically.
 """
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import date, datetime, time, timezone
 from html import escape
 import json
 import os
@@ -14,6 +14,36 @@ import re
 from urllib.parse import urlsplit
 
 from . import morning as M, public_delivery as P, audio_briefing as B
+
+
+POLICIES = {'require_audio', 'allow_text'}
+PROVIDER_CODES = frozenset({'invalid_parameter', 'missing_parameter', 'out_of_range',
+    'unauthorized', 'document_not_found', 'method_not_allowed', 'not_enough_credits',
+    'duplicate_parameter', 'duplicate_request', 'account_under_validation', 'permission_denied'})
+PROVIDER_STATUSES = frozenset({'draft', 'sent', 'archive', 'queued', 'suspended',
+    'inProcess', 'inReview', 'queuedForSmtp', 'queuedForTrigger'})
+PROVIDER_COUNTS = frozenset({'sent', 'delivered', 'softBounces', 'hardBounces',
+    'complaints', 'unsubscriptions', 'uniqueViews', 'viewed', 'uniqueClicks', 'clickers',
+    'deferred', 'remaining'})
+PROVIDER_TIMES = frozenset({'createdAt', 'modifiedAt', 'scheduledAt', 'sentDate'})
+
+
+class EmailProviderError(RuntimeError):
+    """A safe diagnostic; neither provider bodies nor transport messages survive."""
+    def __init__(self, stage, http_status=None, provider_code=None, uncertain_outcome=False):
+        self.stage = stage if stage in {'create', 'send', 'reconcile'} else 'reconcile'
+        self.http_status = http_status if type(http_status) is int and 100 <= http_status <= 599 else None
+        self.provider_code = provider_code if isinstance(provider_code, str) and provider_code in PROVIDER_CODES else None
+        self.uncertain_outcome = uncertain_outcome is True
+        super().__init__('email_provider_error:' + json.dumps(self.diagnostic(), sort_keys=True))
+
+    def diagnostic(self):
+        return {'stage': self.stage, 'http_status': self.http_status,
+                'provider_code': self.provider_code, 'uncertain_outcome': self.uncertain_outcome}
+
+
+def delivery_policy(settings):
+    return settings.get('delivery_policy', 'require_audio')
 
 
 def form_url(value):
@@ -36,7 +66,8 @@ def config(output_dir):
 def validate_settings(value):
     if value.get('enabled') is not True:
         return None
-    if (value.get('double_opt_in_confirmed') is not True or value.get('quota_approved') is not True
+    if (not isinstance(delivery_policy(value), str) or delivery_policy(value) not in POLICIES
+            or value.get('double_opt_in_confirmed') is not True or value.get('quota_approved') is not True
             or type(value.get('sender_id')) is not int or value['sender_id']<=0
             or not isinstance(value.get('sender_footer'),str) or not 10<=len(value['sender_footer'])<=500):
         return None
@@ -85,23 +116,64 @@ class Provider:
 
     def request(self, method, path, payload=None):
         import requests
-        if not re.fullmatch(r'/emailCampaigns(?:/\d+(?:/sendNow)?)?',path):
+        if method == 'POST' and path == '/emailCampaigns':
+            stage = 'create'
+        elif method == 'POST' and re.fullmatch(r'/emailCampaigns/[1-9][0-9]*/sendNow', path):
+            stage = 'send'
+        elif method == 'GET' and re.fullmatch(r'/emailCampaigns/[1-9][0-9]*', path) and payload is None:
+            stage = 'reconcile'
+        else:
             raise ValueError('unsupported_email_operation')
-        response = requests.request(method,'https://api.brevo.com/v3'+path,
-                                    headers={'api-key':self._key}, json=payload,
-                                    timeout=(5,20), allow_redirects=False)
-        if response.status_code not in {200,201,202,204} or len(response.content)>2_000_000:
-            raise ValueError('email_provider_rejected')
-        return response.json() if response.content else {}
+        options = {'headers': {'api-key': self._key}, 'timeout': (5, 20), 'allow_redirects': False}
+        if stage == 'reconcile':
+            options['params'] = {'statistics': 'globalStats', 'excludeHtmlContent': 'true'}
+        else:
+            options['json'] = payload
+        try:
+            response = requests.request(method, 'https://api.brevo.com/v3' + path, **options)
+        except Exception:
+            raise EmailProviderError(stage, uncertain_outcome=stage != 'reconcile') from None
+        status = response.status_code
+        if type(status) is not int or status not in {200, 201, 202, 204}:
+            code = None
+            try:
+                if len(response.content) <= 2_000_000:
+                    body = response.json()
+                    code = body.get('code') if isinstance(body, dict) else None
+            except Exception:
+                pass
+            raise EmailProviderError(stage, status, code,
+                uncertain_outcome=stage != 'reconcile' and (type(status) is not int or status >= 500 or status == 408)) from None
+        try:
+            if len(response.content) > 2_000_000:
+                raise ValueError()
+            value = response.json() if response.content else {}
+            if not isinstance(value, dict):
+                raise ValueError()
+            if stage in {'create', 'reconcile'} and (type(value.get('id')) is not int or value['id'] <= 0):
+                raise ValueError()
+        except Exception:
+            raise EmailProviderError(stage, status, uncertain_outcome=stage != 'reconcile') from None
+        return value
 
     def create(self,payload):
         value = self.request('POST','/emailCampaigns',payload)
         if type(value.get('id')) is not int or value['id']<=0:
-            raise ValueError('email_campaign_id_missing')
+            raise EmailProviderError('create', uncertain_outcome=True)
         return value['id']
 
     def send(self,identity):
+        if type(identity) is not int or identity <= 0:
+            raise ValueError('invalid_email_campaign_id')
         self.request('POST',f'/emailCampaigns/{identity}/sendNow')
+
+    def report(self, identity):
+        if type(identity) is not int or identity <= 0:
+            raise ValueError('invalid_email_campaign_id')
+        value = self.request('GET', f'/emailCampaigns/{identity}')
+        if type(value.get('id')) is not int or value['id'] != identity:
+            raise EmailProviderError('reconcile')
+        return value
 
 
 def email_text(brief, lang):
@@ -132,14 +204,58 @@ def payload(settings, brief, audio, lang):
             stamp = datetime.fromisoformat(event['scheduled_at']).astimezone(ZoneInfo(M.ZONE))
             text += f'<li>{stamp:%Y-%m-%d %H:%M} {escape(event["title"])} ({escape(event["source"])})</li>'
         text += '</ul><p>'+('仅覆盖 BLS 与 BEA 预定发布，不含实际值和市场预期。' if zh else 'BLS and BEA scheduled releases only; actual values and consensus are not included.')+'</p>'
-    text += f'<p><a href="{P.SITE+audio["url"]}">'+('收听本期语音' if zh else 'Listen to this edition')+'</a></p>'
+    if audio is not None:
+        text += f'<p><a href="{P.SITE+audio["url"]}">'+('收听本期语音' if zh else 'Listen to this edition')+'</a></p>'
+    else:
+        text += '<p>'+('本期语音暂不可用，先送达已核验的文字简报。' if zh else 'Audio is temporarily unavailable. This verified text edition is ready to read.')+'</p>'
     text += f'<p><a href="{P.SITE}#/news">'+('查看网页与来源' if zh else 'Read the dashboard and sources')+'</a></p>'
-    text += '<p>'+('您已订阅 FX Dashboard 的工作日简报。语音为合成语音。' if zh else 'You subscribed to FX Dashboard weekday briefings. Audio uses a synthetic voice.')+'</p>'
+    notice = ('您已订阅 FX Dashboard 的工作日简报。' if zh else 'You subscribed to FX Dashboard weekday briefings.')
+    if audio is not None:
+        notice += ('语音为合成语音。' if zh else ' Audio uses a synthetic voice.')
+    text += '<p>'+notice+'</p>'
     text += f'<p>{escape(settings["sender_footer"])}</p>'
     text += '<p><a href="{{ unsubscribe }}">'+('退订' if zh else 'Unsubscribe')+'</a></p>'
     return {'name':f'fx-{brief["date"]}-{lang}-{brief["edition_hash"][:12]}',
             'sender':{'id':settings['sender_id']}, 'subject':title,'htmlContent':text,
             'recipients':{'listIds':[settings['lists'][lang]]}, 'mirrorActive':False}
+
+
+def delivery_audio(settings, expected, verified, moment):
+    """Select only proven attachments; a text fallback cannot excuse a mismatch."""
+    try:
+        age = (moment-datetime.fromisoformat(verified['observed_at'])).total_seconds()
+        audio = verified['audio_verified']
+        checks = verified.get('checks', [])
+        if (verified.get('text_verified') is not True or verified.get('site') != P.SITE
+                or any(verified.get(k) != expected[k] for k in ('date', 'mode', 'edition_hash'))
+                or verified['expectation_hash'] != M.digest(expected) or not 0 <= age <= 900
+                or not isinstance(audio, list) or len(audio) != len(set(audio))
+                or set(audio)-{'en', 'zh'} or not isinstance(checks, list)
+                or expected.get('media_errors')):
+            raise ValueError()
+        policy = delivery_policy(settings)
+        if policy == 'require_audio':
+            if verified['state'] != 'verified' or set(audio) != {'en', 'zh'} or checks:
+                raise ValueError()
+        elif policy == 'allow_text':
+            allowed = {lang + suffix for lang in ('en', 'zh')
+                       for suffix in ('_audio_missing', '_audio_probe_unavailable')}
+            if verified['state'] not in {'verified', 'text_verified', 'pending'} or set(checks)-allowed:
+                raise ValueError()
+            for lang in {'en','zh'}-set(audio):
+                reason = '_audio_probe_unavailable' if lang in expected['media'] else '_audio_missing'
+                if lang+reason not in checks:
+                    raise ValueError()
+            if verified['state'] == 'verified' and (set(audio) != {'en','zh'} or checks):
+                raise ValueError()
+        else:
+            raise ValueError()
+        selected = {lang: expected['media'][lang] if lang in audio else None for lang in ('en', 'zh')}
+        if any(selected[lang] is not None and lang+'_audio_probe_unavailable' in checks for lang in selected):
+            raise ValueError()
+        return selected
+    except (KeyError, TypeError, ValueError):
+        raise ValueError('public_delivery_unconfirmed') from None
 
 
 def deliver(output_dir, brief, verified, *, clock=M.now_utc, provider_factory=None):
@@ -152,11 +268,7 @@ def deliver(output_dir, brief, verified, *, clock=M.now_utc, provider_factory=No
         return {'state':'outside_delivery_day'}
     expected = P.expectation(output_dir,brief)
     try:
-        age = (moment-datetime.fromisoformat(verified['observed_at'])).total_seconds()
-        if (verified['state']!='verified' or verified['expectation_hash']!=M.digest(expected)
-                or verified['edition_hash']!=brief['edition_hash'] or not 0<=age<=900
-                or set(verified['audio_verified'])!={'en','zh'}):
-            return {'state':'public_delivery_unconfirmed'}
+        selected = delivery_audio(settings, expected, verified, moment)
     except (KeyError,TypeError,ValueError):
         return {'state':'public_delivery_unconfirmed'}
     try:
@@ -175,24 +287,99 @@ def deliver(output_dir, brief, verified, *, clock=M.now_utc, provider_factory=No
                 if path.exists():
                     states[lang] = previous.get('state','review_required')
                     continue
-                message = payload(settings,expected,expected['media'][lang],lang)
+                message = payload(settings,expected,selected[lang],lang)
                 row = {'date':brief['date'],'language':lang,'edition_hash':brief['edition_hash'],
-                       'payload_hash':M.digest(message),'state':'creating', 'started_at':moment.isoformat()}
+                       'payload_hash':M.digest(message),'state':'creating', 'started_at':moment.isoformat(),
+                       'delivery_policy':delivery_policy(settings),
+                       'content_mode':'audio' if selected[lang] is not None else 'text_only'}
                 M.atomic_json(path,row)
                 try:
                     identity = provider.create(message)
+                    if type(identity) is not int or identity <= 0:
+                        raise EmailProviderError('create', uncertain_outcome=True)
                     row.update(campaign_id=identity,state='submitting')
                     M.atomic_json(path,row)
                     provider.send(identity)
                     row.update(state='submitted',finished_at=clock().isoformat())
                 except Exception as exc:
                     row.update(state='review_required',error_type=type(exc).__name__,finished_at=clock().isoformat())
+                    if isinstance(exc, EmailProviderError):
+                        row['error'] = exc.diagnostic()
                 M.atomic_json(path,row)
                 states[lang] = row['state']
         except M.Busy:
             states[lang] = 'busy'
     return {'state':'submitted' if set(states.values())=={'submitted'} else 'attention_required',
             'languages':states,'scope':'provider_submission_not_inbox_receipt'}
+
+
+def provider_observation(value, moment):
+    """Keep campaign totals and timestamps, never recipients, HTML or raw errors."""
+    status = value.get('status')
+    status = status if isinstance(status, str) and status in PROVIDER_STATUSES else None
+    statistics = value.get('statistics')
+    totals = statistics.get('globalStats') if isinstance(statistics, dict) else None
+    totals = totals if isinstance(totals, dict) else {}
+    stats = {k: v for k, v in totals.items() if k in PROVIDER_COUNTS and type(v) is int and 0 <= v <= 10**12}
+    if isinstance(statistics, dict) and type(statistics.get('remaining')) is int and 0 <= statistics['remaining'] <= 10**12:
+        stats['remaining'] = statistics['remaining']
+    times = {}
+    for key in PROVIDER_TIMES:
+        try:
+            stamp = datetime.fromisoformat(value[key])
+            if not stamp.tzinfo:
+                continue
+            times[key] = stamp.astimezone(timezone.utc).isoformat()
+        except (KeyError, TypeError, ValueError, OverflowError):
+            pass
+    state = ('provider_confirmed' if stats.get('delivered', 0) > 0 else
+             'provider_sent' if status == 'sent' or stats.get('sent', 0) > 0 else
+             'not_confirmed' if status is not None else 'unreadable')
+    return {'state':state, 'provider_status':status, 'observed_at':moment.isoformat(),
+            'stats':stats, 'times':times}
+
+
+def reconcile(output_dir, day, lang, *, provider_factory=None, clock=M.now_utc):
+    """Read a known campaign with GET; leave every daily delivery claim intact."""
+    try:
+        valid = isinstance(day, str) and date.fromisoformat(day).isoformat() == day and lang in {'en', 'zh'}
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ValueError('invalid_email_reconciliation_identity')
+    root = Path(output_dir)/'subscriptions'
+    path = root/'deliveries'/day/(lang+'.json')
+    receipt = M.read_json(path)
+    if not path.exists():
+        return {'state':'no_delivery_claim','date':day,'language':lang,'network_called':False}
+    if (receipt.get('date') != day or receipt.get('language') != lang
+            or not all(isinstance(receipt.get(k), str) and B.HASH.fullmatch(receipt[k])
+                       for k in ('edition_hash','payload_hash'))
+            or not isinstance(receipt.get('state'), str)
+            or receipt['state'] not in {'creating','submitting','submitted','review_required'}):
+        return {'state':'manual_review_required','date':day,'language':lang,'network_called':False}
+    identity = receipt.get('campaign_id')
+    if type(identity) is not int or identity <= 0:
+        return {'state':'manual_review_required','date':day,'language':lang,
+                'claim_state':receipt.get('state'),'network_called':False}
+    row = {k:receipt[k] for k in ('date','language','edition_hash','payload_hash','campaign_id')}
+    row.update(schema_version=1, claim_state=receipt.get('state'), scope='provider_report_not_inbox_receipt')
+    try:
+        provider = (provider_factory or Provider)()
+    except Exception:
+        return {**row,'state':'configuration_required','network_called':False}
+    try:
+        report = provider.report(identity)
+        if not isinstance(report, dict) or type(report.get('id')) is not int or report['id'] != identity:
+            raise EmailProviderError('reconcile')
+        row.update(state='observed',network_called=True,provider_observation=provider_observation(report,clock()))
+        M.atomic_json(root/'provider-observations'/day/(lang+'.json'),row)
+        return row
+    except Exception as exc:
+        result = {**row,'state':'reconciliation_unavailable','network_called':True,'error_type':type(exc).__name__}
+        if isinstance(exc, EmailProviderError):
+            result['error'] = exc.diagnostic()
+        return result
 
 
 def main(argv=None):
@@ -204,14 +391,32 @@ def main(argv=None):
     group.add_argument('--check',action='store_true')
     group.add_argument('--configure',action='store_true',help='Read operator settings, without keys, from stdin')
     group.add_argument('--disable',action='store_true')
+    group.add_argument('--reconcile',action='store_true',help='GET the recorded campaign report; never resend a claim')
+    group.add_argument('--delivery-policy',choices=sorted(POLICIES),help='Update an existing valid configuration without sending')
+    parser.add_argument('--date')
+    parser.add_argument('--lang',choices=('en','zh'))
     args = parser.parse_args(argv)
+    if args.reconcile:
+        if args.date is None or args.lang is None:
+            parser.error('--reconcile requires --date and --lang')
+        result = reconcile(OUTPUT_DIR,args.date,args.lang)
+        print(json.dumps(result,ensure_ascii=True))
+        return 0 if result['state'] == 'observed' else 2
+    if args.date is not None or args.lang is not None:
+        parser.error('--date and --lang require --reconcile')
+    if args.delivery_policy:
+        value = config(OUTPUT_DIR)
+        if value is None:
+            raise ValueError('valid_email_settings_required')
+        value['delivery_policy'] = args.delivery_policy
+        M.atomic_json(OUTPUT_DIR/'subscriptions/config.json',value)
     if args.disable:
         value = M.read_json(OUTPUT_DIR/'subscriptions/config.json')
         value['enabled'] = False
         M.atomic_json(OUTPUT_DIR/'subscriptions/config.json',value)
     if args.configure:
         value = json.loads(sys.stdin.read(12000))
-        allowed = {'enabled','double_opt_in_confirmed','quota_approved','sender_id','sender_footer','forms','lists'}
+        allowed = {'enabled','double_opt_in_confirmed','quota_approved','sender_id','sender_footer','forms','lists','delivery_policy'}
         if set(value)-allowed or validate_settings(value) is None:
             raise ValueError('invalid_email_settings')
         M.atomic_json(OUTPUT_DIR/'subscriptions/config.json',value)
@@ -222,7 +427,10 @@ def main(argv=None):
             key_ok = True
         except ValueError:
             pass
-    print(json.dumps({'enabled':bool(config(OUTPUT_DIR)),'key_format_valid':key_ok,'network_called':False}))
+    result = {'enabled':bool(config(OUTPUT_DIR)),'key_format_valid':key_ok,'network_called':False}
+    if args.delivery_policy:
+        result['delivery_policy'] = args.delivery_policy
+    print(json.dumps(result))
     return 0
 
 

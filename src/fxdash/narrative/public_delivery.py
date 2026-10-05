@@ -49,9 +49,15 @@ def expectation(output_dir, brief):
     audio = B.inspect(output_dir, saved)
     media = {lang: {k: item[k] for k in ('url','audio_sha256','script_sha256')}
              for lang, item in audio['languages'].items() if item.get('state') == 'ready'}
-    return {'date':saved['date'], 'mode':saved['mode'], 'edition_hash':saved['edition_hash'],
+    result = {'date':saved['date'], 'mode':saved['mode'], 'edition_hash':saved['edition_hash'],
             'text':saved['text'], 'attribution_as_of':saved['attribution_as_of'],
             'calendar':saved.get('calendar'), 'recap':saved.get('recap'), 'media':media}
+    corrupt = [lang for lang, item in audio['languages'].items() if item.get('state') == 'integrity_failed']
+    if audio.get('state') == 'integrity_failed':
+        corrupt = ['en', 'zh']
+    if corrupt:
+        result['media_errors'] = sorted(corrupt)
+    return result
 
 
 def verify(output_dir, brief, *, fetcher=None, clock=M.now_utc, force=False):
@@ -89,16 +95,29 @@ def verify(output_dir, brief, *, fetcher=None, clock=M.now_utc, force=False):
                     else:
                         result['text_verified'] = True
                         remote_media = (current.get('audio') or {}).get('languages') or {}
-                        for lang, item in expected['media'].items():
+                        for lang in ('en', 'zh'):
+                            item = expected['media'].get(lang)
                             remote = remote_media.get(lang) or {}
-                            if remote.get('state') != 'ready' or any(remote.get(k) != v for k,v in item.items()):
+                            if lang in expected.get('media_errors', []):
+                                result['checks'].append(lang+'_audio_local_integrity_mismatch')
+                            elif item is None:
+                                result['checks'].append(lang+('_audio_manifest_mismatch' if remote.get('state') in {'ready','integrity_failed'} else '_audio_missing'))
+                            elif remote.get('state') != 'ready' or any(remote.get(k) != v for k,v in item.items()):
                                 result['checks'].append(lang+'_audio_manifest_mismatch')
-                            elif hashlib.sha256(get(item['url'], 5_000_000)).hexdigest() != item['audio_sha256']:
-                                result['checks'].append(lang+'_audio_bytes_mismatch')
                             else:
-                                result['audio_verified'].append(lang)
+                                try:
+                                    data = get(item['url'], 5_000_000)
+                                except Exception:
+                                    result['checks'].append(lang+'_audio_probe_unavailable')
+                                    continue
+                                if hashlib.sha256(data).hexdigest() != item['audio_sha256']:
+                                    result['checks'].append(lang+'_audio_bytes_mismatch')
+                                else:
+                                    result['audio_verified'].append(lang)
                         if not result['checks']:
                             result['state'] = 'verified' if len(expected['media']) == 2 else 'text_verified'
+                        elif all(check.endswith('_audio_missing') for check in result['checks']):
+                            result['state'] = 'text_verified'
                 result['public_built_at'] = build.get('built_at')
             except Exception as exc:
                 # Provider bodies, URLs with query parameters and raw errors stay out.

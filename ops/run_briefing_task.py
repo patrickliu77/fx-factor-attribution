@@ -1,22 +1,31 @@
 """Windowless Windows Task Scheduler entry point, launched with pythonw.exe."""
 import os
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_delivery_runtime as R
 
-def main():
-    repo = Path(__file__).resolve().parents[1]
+
+def main(repo=None):
+    repo = Path(repo) if repo is not None else Path(__file__).resolve().parents[1]
     os.chdir(repo)
     sys.path.insert(0, str(repo / "src"))
-    from fxdash.narrative.speech_settings import refresh_user_speech_environment
-    refresh_user_speech_environment()
+    health = R.runtime_status(repo)
+    if health['state'] != 'ready':
+        R.record_task_status(repo/'outputs', 'briefing', 3, {'state':'failed'})
+        print('runtime_health_failed', health['state'], flush=True)
+        return 3
+    R.bootstrap_tools()
     destination = repo / "outputs" / "logs" / "briefing.log"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("a", encoding="utf-8", buffering=1) as stream:
-        sys.stdout = sys.stderr = stream
+    with destination.open("a", encoding="utf-8", buffering=1) as stream, redirect_stdout(stream), redirect_stderr(stream):
         print(datetime.now(timezone.utc).isoformat(), "scheduled_entry_started", flush=True)
         try:
+            from fxdash.narrative.speech_settings import refresh_user_speech_environment
+            refresh_user_speech_environment()
             from fxdash.narrative.morning_dispatch import main as dispatch
             from fxdash.narrative import morning as M
             action = M.slot(M.now_utc())
@@ -24,11 +33,18 @@ def main():
             gate = automation.before('morning', repo/'outputs')
             if not gate['proceed']:
                 automation.report(gate)
-                return 0
+                status = R.record_task_status(repo/'outputs', 'briefing', 0, {'state':gate['state']})
+                automation.report(status)
+                return status['exit_code']
             result = dispatch(["--scheduled-task"])
+            delivery = {'state':'idle'}
             if action != 'idle':
-                automation.report(automation.after(repo/'outputs'))
-            print(M.now_utc().isoformat(), "scheduled_entry_finished", "exit_code=" + str(result), flush=True)
+                delivery = automation.after(repo/'outputs')
+                automation.report(delivery)
+            status = R.record_task_status(repo/'outputs', 'briefing', result, delivery)
+            automation.report(status)
+            exit_code = status['exit_code']
+            print(M.now_utc().isoformat(), "scheduled_entry_finished", "exit_code=" + str(exit_code), flush=True)
             enrollment = M.read_json(repo / "outputs" / "briefing" / "acceptance.json")
             # The optional clock window is no longer the primary acceptance.
             # Catch-up writes its own usage report after an actual attempt.
@@ -43,11 +59,13 @@ def main():
                     save_report(repo / "outputs", report)
                 except Exception as exc:
                     print(M.now_utc().isoformat(), "operations_report_failed", type(exc).__name__, flush=True)
-                    return result or 1
-            return result
-        except BaseException:
-            import traceback
-            traceback.print_exc()
+                    R.record_task_status(repo/'outputs', 'briefing', exit_code or 1, delivery)
+                    return exit_code or 1
+            return exit_code
+        except BaseException as exc:
+            # Raw provider errors and URLs must never reach task logs.
+            print(datetime.now(timezone.utc).isoformat(), 'scheduled_entry_failed', type(exc).__name__, flush=True)
+            R.record_task_status(repo/'outputs', 'briefing', 1, {'state':'failed'})
             return 1
 
 

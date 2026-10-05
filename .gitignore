@@ -13,3 +13,4 @@ __pycache__/
 
 # Private interview notes are not part of the public source release.
 /notes/
+/.venv/

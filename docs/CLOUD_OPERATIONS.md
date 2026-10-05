@@ -145,6 +145,14 @@ then request model and speech generation and use delivery mode. A manually
 dispatched delivery likewise needs the durable authorization and speech enabled.
 For a given date, keep policy flags unchanged between attempts.
 
+An existing email configuration can opt into `delivery_policy: allow_text`.
+This permits a text-only email per language when that public MP3 probe is
+unavailable and the same frozen public text has been verified. The cloud path
+still requires a completed paid speech stage and a complete local audio build.
+A failed or uncertain TTS call remains a durable `review_required` checkpoint;
+the fallback does not bypass that claim or authorize another paid attempt.
+The default `require_audio` policy and daily submission limits are unchanged.
+
 ## Schedule and alerts
 
 The prepared production workflow starts at 08:05 New York time, with delivery

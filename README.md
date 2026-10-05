@@ -304,6 +304,12 @@ briefing email, audio-link receipt and unsubscribe still need real-world checks.
 A provider's accepted or delivered status alone does not prove inbox arrival.
 See [email setup](docs/EMAIL_SUBSCRIPTIONS_SETUP.md).
 
+Operators can explicitly select verified text-only fallback when audio is
+unavailable. A known campaign can be checked through a GET-only reconciliation
+command without resending. The News delivery panel separates today's delivery
+from historical English/Chinese receipts and distinguishes credential presence,
+local task registration, stale runtime observations and provider-reported delivery.
+
 ### Reading older editions
 
 The News page separates preparation, edition and delivery records. Its archive
@@ -317,21 +323,21 @@ left unchanged, with earlier editions still available through the selector.
 
 ## Running locally
 
-Install the Python packages listed in the public repository:
+On Windows, create the persistent project environment from an installed Python 3.13:
 
 ```powershell
-python -m pip install -r requirements.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\setup_runtime.ps1 -BasePython '<persistent Python 3.13 executable>'
 ```
 
 Set the credentials for the data services and narrative generation:
 
 ```powershell
-setx FRED_API_KEY <key>
-setx BANXICO_TOKEN <token>
-setx GEMINI_API_KEY <key>
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\configure_delivery_credentials.ps1
 ```
 
-Gemini is used by the narrative command. Open a new terminal after `setx`.
+The helper uses hidden local prompts, preserves existing values and makes no
+provider calls. Open a new terminal, then activate `.venv\Scripts\Activate.ps1`
+and run `python ops/check_delivery_runtime.py`. Gemini is used by the narrative command.
 Historical runs also need `data/user/fred_BAMLH0A0HYM2.csv`, the archived high yield
 spread series used to extend FRED's available history. Input files and generated
 outputs are excluded from this public repository.

@@ -8,14 +8,19 @@ server or cloud migration is involved in this design.
 
 ## What readers receive
 
-One short saved briefing and an immutable MP3 link, in the selected language.
+One short saved briefing and, when verified, an immutable MP3 link in the selected language.
 The target is 09:00 America/New_York on FX weekdays. The existing local computer
 must be awake, logged in and online. Late login uses the day's catch-up edition.
 Generation, Pages deployment and email queues add delay; 09:00 inbox arrival is not
 guaranteed. Past missed dates and weekends are not mailed as a backlog.
 
-Public text, calendar context and both audio files must match the frozen local
-edition before a campaign can be submitted. A saved send claim prevents a repeat
+By default, public text, calendar context and both audio files must match the frozen local
+edition before a campaign can be submitted. The optional `allow_text` policy can
+send verified text when audio is missing or its public probe is unavailable. A
+verified audio link is included separately for each language; unavailable links
+are omitted and the message is labelled text-only. An explicit manifest, identity
+or byte-integrity mismatch blocks delivery under either policy.
+A saved send claim prevents a repeat
 after interruption. Ambiguous provider responses are marked `review_required`.
 Inspect the campaign in Brevo before any operator-assisted recovery. Never delete a
 send receipt to retry blindly. `submitted` means provider acceptance, not inbox
@@ -52,12 +57,66 @@ in the Windows user environment. This environment storage is plaintext, not a va
 No network request, signup, campaign, message, publication or task change occurs in
 the helper. The form becomes visible after a local reload/public site rebuild.
 
+Run `ops/setup_runtime.ps1` first to create the persistent project `.venv`.
+On an existing installation with valid sender/list settings, restore only missing
+credentials without entering that metadata again:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\configure_delivery_credentials.ps1 -Names BREVO_API_KEY
+```
+
+The hidden local prompt retains existing saved values by default. Provider
+authentication has not been established by saving a key. Open a new terminal and
+record a sanitized readiness observation with
+`.\.venv\Scripts\python.exe ops/check_delivery_runtime.py`; this checks the
+interpreter, exact dependency versions, credential presence, tools and the five
+Windows task registrations. It makes no provider calls and does not enable tasks.
+
 Configuration presence and format can be checked without contacting the provider:
 
 ```powershell
 $env:PYTHONPATH = 'src'
 python -m fxdash.narrative.subscriptions --check
 ```
+
+Select the optional text fallback explicitly while preserving existing sender,
+forms, lists and receipts:
+
+```powershell
+python -m fxdash.narrative.subscriptions --delivery-policy allow_text
+```
+
+Use `--delivery-policy require_audio` to restore the default. No second campaign
+is sent if audio becomes available after that day's text email. Cloud workers
+still stop at a failed paid speech stage; this policy does not bypass their
+durable stage claims or the cloud audio publication gate.
+
+## Inspecting a failed submission
+
+New receipts retain `error_type` and add a sanitized failure stage (`create` or
+`send`), HTTP status, a recognized provider error code and an uncertain-outcome
+flag. They contain no raw response body, key or subscriber address. Historical
+receipts with only `ValueError` cannot establish the original provider error.
+
+For a receipt with a known positive campaign ID, query the provider report:
+
+```powershell
+python -m fxdash.narrative.subscriptions --reconcile --date 2026-09-18 --lang zh
+```
+
+This performs GET only: it does not search, create, resend or delete campaigns.
+An independent, identity-bound observation is saved under ignored
+`outputs/subscriptions/provider-observations/`; the send claim is unchanged.
+A missing campaign ID requires manual inspection in Brevo. A reported sent state
+without a positive delivered count is not delivery confirmation. Even a positive
+count does not prove every recipient's inbox arrival. See Brevo's
+[campaign report](https://developers.brevo.com/reference/get-email-campaign).
+
+The News page's delivery panel and `GET /api/briefing/operations` use saved
+observations. They separate historical English/Chinese receipts from today's
+delivery, and mark runtime checks older than 26 hours as stale. Credential
+presence is labelled as configured but unverified. A static site cannot observe
+a subsequent failed task until another build publishes the observation.
 
 To stop new campaigns and hide the form on the next build:
 

@@ -5,10 +5,14 @@
     No account creation, provider call, email send, task change or site publication.
     The key is stored in the user's local environment, which is not a secret vault.
 #>
-param([string]$Python = '')
+param(
+    [string]$Python = '',
+    [ValidateSet('require_audio','allow_text')][string]$DeliveryPolicy = 'require_audio'
+)
 $ErrorActionPreference = 'Stop'
 $emailRepo = Split-Path -Parent $PSScriptRoot
-if (-not $Python) { $Python = Join-Path $env:USERPROFILE 'miniconda3/python.exe' }
+$emailResolved = & (Join-Path $PSScriptRoot 'setup_runtime.ps1') -ResolveOnly -Python $Python
+$Python = $emailResolved.Path
 if (-not (Test-Path -LiteralPath $Python)) { throw 'Pass -Python with the project interpreter path.' }
 Write-Host 'Use dedicated English/Chinese lists populated only by double-opt-in forms. Do not import unconfirmed addresses.'
 Write-Host 'Set the campaign unsubscribe footer, sender identity, postal details and account quota in Brevo first.'
@@ -26,6 +30,7 @@ $emailSettings = @{
     }
     double_opt_in_confirmed = $false
     quota_approved = $false
+    delivery_policy = $DeliveryPolicy
 }
 $emailApproval = Read-Host 'Type ENABLE after testing both confirmation and unsubscribe flows and approving the account quota/billing'
 if ($emailApproval -cne 'ENABLE') { throw 'Not enabled. No settings changed.' }

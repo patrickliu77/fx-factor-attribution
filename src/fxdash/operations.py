@@ -16,6 +16,7 @@ from .narrative import morning as M
 from .narrative.acceptance import assess
 from .narrative.usage_acceptance import assess as assess_usage
 from .narrative.morning_health import latest_observation
+from .narrative.delivery_status import snapshot as delivery_snapshot, TASKS, CREDENTIALS, LANGUAGES
 
 
 CHECK_LABELS = {
@@ -54,6 +55,7 @@ def collect_report(output_dir, *, start_date=None, clock=M.now_utc, archive_limi
             "acceptance": assess_usage(output_dir, start_date=start, clock=lambda: observed),
             "scheduled_acceptance": acceptance, "archive": audit_archive(output_dir, limit=archive_limit),
             "clock_observation": latest_observation(output_dir, clock=lambda: observed),
+            "delivery_operations": delivery_snapshot(output_dir, clock=lambda: observed),
             "scope": "Local saved artifacts only. No fetching, model fitting, generation or publication."}
 
 
@@ -78,6 +80,84 @@ def _font_styles():
     licenses = "\n\n".join((root / name).read_text(encoding="utf-8")
                            for name in ("OFL-Outfit.txt", "OFL-IBM-Plex-Mono.txt"))
     return "\n".join(styles), escape(licenses)
+
+
+def _delivery_html(delivery):
+    if not isinstance(delivery, dict):
+        return '<p class="empty">尚无播报运行状态快照。</p>'
+    observation = delivery.get("runtime_observation") or {}
+    labels = {"not_observed": "尚未观察", "current": "已保存近期观察", "stale": "观察已过时",
+              "future": "观察时间晚于报告时间", "unreadable": "记录不可读",
+              "registered_enabled": "已注册并启用", "registered_disabled": "已注册但停用",
+              "not_registered": "未注册", "configured_unverified": "已配置，账户未验证",
+              "not_configured": "未配置", "ready": "持久环境与依赖已通过本地检查",
+              "interpreter_missing": "缺少解释器", "missing_dependencies": "依赖未齐全",
+              "not_persistent": "解释器不是持久环境", "probe_failed": "环境检查未完成",
+              "submitted": "已提交服务商", "review_required": "需要检查，未自动重发",
+              "provider_sent": "服务商报告已发送，尚无送达计数",
+              "provider_confirmed": "服务商报告有送达记录（不等于收件箱）",
+              "not_confirmed": "尚未获得送达证据", "not_recorded": "尚无回执",
+              "creating": "正在创建提交记录", "submitting": "提交结果待确认",
+              "in_progress": "提交过程已有记录", "attention_required": "需要检查",
+              "before_delivery": "尚未到纽约 09:00", "delivery_due": "已到工作日交付时段",
+              "weekend": "周末无需交付", "disabled": "配置停用", "enabled": "配置启用",
+              "configuration_required": "配置需要完善", "numbers_only": "已保存数字版",
+              "inputs_unavailable": "输入尚不可用", "verified": "保存的公网观察已核对",
+              "text_verified": "文字已核对，音频尚不完整",
+              "pending": "公网观察尚待完成", "not_generated": "尚无音频", "failed": "音频生成失败",
+              "generating": "音频生成结果待确认", "integrity_failed": "音频记录校验失败",
+              "missing": "尚无观察", "not_ready": "环境未就绪"}
+    label = lambda value: labels.get(value, "未知状态") if isinstance(value, str) else "尚未观察"
+    runtime = observation.get("runtime") or {}
+    tasks = observation.get("tasks") or {}
+    rows = [(name, label(tasks.get(name, {}).get("state")), tasks.get(name, {}).get("last_run_at"),
+             tasks.get(name, {}).get("last_result"), tasks.get(name, {}).get("next_run_at")) for name in TASKS]
+    html = (f'<p>任务与凭据：{_text(label(observation.get("state")))}；本地环境：{_text(label(runtime.get("state")))}。</p>'
+            f'<p class="note">探测观察于 {_text(observation.get("observed_at"))}；距报告 {_text(observation.get("age_hours"))} 小时。'
+            '页面和此报告仅读取保存的检查结果，不查询任务调度器或凭据存储。缺少新观察不能证明仍在自动运行。</p>')
+    html += _table(("任务", "保存状态", "最近运行 · UTC", "退出结果", "下次运行 · UTC"), rows) if rows else ""
+    credentials = observation.get("credentials") or {}
+    html += _table(("凭据设置", "保存的配置状态"),
+                   ((name, label(credentials.get(name, {}).get("state"))) for name in CREDENTIALS))
+    tools = observation.get("tools") or {}
+    html += _table(("本地工具", "保存的可用状态"),
+                   ((name, "已发现工具" if tools.get(name, {}).get("available") is True else
+                     "工具未找到" if tools.get(name, {}).get("available") is False else "尚未观察")
+                    for name in ("git", "ffprobe")))
+    email = delivery.get("email") or {}
+    today = email.get("today") or {}
+    credential = email.get("credential_configured")
+    credential_label = "已配置，服务商账户未验证" if credential is True else "未配置" if credential is False else "尚未观察"
+    html += (f'<p>邮件：{_text(label(email.get("configuration_state")))}；发送凭据：{_text(credential_label)}；'
+             f'交付策略：{"允许文字邮件" if email.get("policy") == "allow_text" else "要求中英文音频"}。</p>'
+             f'<p>纽约日期 {_text(today.get("date"))}：{_text(label(today.get("phase")))}，{_text(label(today.get("state")))}。</p>')
+    today_languages = today.get("languages") or {}
+    today_rows = [(lang, label(today_languages.get(lang, {}).get("state")),
+                   label((today_languages.get(lang, {}).get("confirmation") or {}).get("state")),
+                   today_languages.get(lang, {}).get("finished_at")) for lang in LANGUAGES]
+    html += _table(("当天语言", "提交回执", "服务商送达观察", "回执时间 · UTC"), today_rows) if today_rows else ""
+    counts = email.get("counts") or {}
+    html += (f'<p class="note">近期保存回执：已提交 {_text(counts.get("submitted", 0))}，'
+             f'待检查 {_text(counts.get("review_required", 0))}，服务商报告送达 {_text(counts.get("confirmed", 0))}。'
+             '送达计数为已提交记录中的独立证据，不表示进入收件箱。过往回执不代替当天回执。</p>')
+    history_rows = [(row.get("date"), lang, label(item.get("state")),
+                     label((item.get("confirmation") or {}).get("state")), item.get("finished_at"))
+                    for row in (email.get("history") or [])[:2] for lang in LANGUAGES
+                    for item in [row.get("languages", {}).get(lang, {})]]
+    html += _table(("最近历史日期", "语言", "提交状态", "服务商观察", "回执时间 · UTC"), history_rows) if history_rows else ""
+    latest = (delivery.get("briefing") or {}).get("latest")
+    if latest:
+        html += (f'<p>最新保存稿：{_text(latest.get("date"))}，{_text(label(latest.get("state")))}；归因截至 '
+                 f'{_text(latest.get("as_of"))}；生成于 {_text(latest.get("generated_at"))}；{_text(label(latest.get("freshness")))}。</p>')
+        public = latest.get("public") or {}
+        html += (f'<p class="note">公网：{_text(label(public.get("state")))}，观察于 {_text(public.get("observed_at"))}，'
+                 f'{_text(label(public.get("freshness")))}。这项保存观察不能证明当前公网仍可访问。</p>')
+        html += _table(("音频语言", "文件状态", "观察新鲜度", "生成时间 · UTC"),
+                       ((lang, label(item.get("state")), label(item.get("freshness")), item.get("generated_at"))
+                        for lang in LANGUAGES for item in [(latest.get("audio") or {}).get(lang, {})]))
+    else:
+        html += '<p class="empty">尚无保存稿件，未从历史页面推断今天已出刊。</p>'
+    return html
 
 
 def render_report(report):
@@ -180,6 +260,7 @@ def render_report(report):
               "AUTOMATED": str(acceptance["automated_days"]), "GENERATION_ISSUES": str(acceptance["generation_issue_days"]),
               "LEGACY": legacy_html,
               "CONTEXT": str(acceptance["event_context_days"]), "DAYS": day_html, "CLOCK": clock_html, "INVENTORY": inventory,
+              "DELIVERY": _delivery_html(report.get("delivery_operations")),
               "ISSUES": issues, "CHANGES": change_html, "LIMIT": str(archive["inspection_limit"]),
               "CHECKED": str(archive["checked_files"]), "TOTAL": str(archive["total_capture_files"])}
     template = Path(__file__).with_name("operations_report.html").read_text(encoding="utf-8")

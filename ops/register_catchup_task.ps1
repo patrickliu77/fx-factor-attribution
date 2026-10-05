@@ -10,10 +10,8 @@
 param([string]$Python = "", [string]$TaskName = "fxdash-catchup")
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
-if (-not $Python) { $Python = Join-Path $env:USERPROFILE "miniconda3\pythonw.exe" }
-if (-not (Test-Path -LiteralPath $Python) -or (Split-Path -Leaf $Python) -ne 'pythonw.exe') {
-    throw 'Pass the windowless pythonw.exe interpreter.'
-}
+$resolved = & (Join-Path $PSScriptRoot 'setup_runtime.ps1') -ResolveOnly -Python $Python -Windowless
+$Python = $resolved.Path
 $wrapper = Join-Path $repo 'ops\run_catchup_task.py'
 if (-not (Test-Path -LiteralPath $wrapper)) { throw 'Catch-up entry is missing.' }
 $taskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name

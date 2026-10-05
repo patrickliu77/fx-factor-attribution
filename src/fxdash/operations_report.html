@@ -45,9 +45,13 @@ footer{font-size:12px;color:var(--muted)}footer pre{white-space:pre-wrap;overflo
 <details><summary>查看验收口径</summary>
 <p class="note">不要求固定时刻出刊或连续开机。检查完整且足够新的输入、真实日期、冻结稿和匹配的推送回执。没有调用记录的日期不判故障；缺数据列为等待，真实执行失败保持可见。数字版可以完成交付，新闻解读质量另行记录。</p>
 <p class="note">原始自动生成链需要起止调用记录支持。人工生成或缺少旧调用记录的稿件仍可核对交付，单独标明自动化来源未证实。任何交付计数都不等同于长期可用率。</p>
-<p class="note">推送回执只证明本地发布流程返回成功。此报告尚未核对 GitHub Pages 的构建状态和公网内容。</p>
+<p class="note">推送回执只证明本地发布流程返回成功。此报告尚未核对 GitHub Pages 的当前构建状态和当前公网内容；下方只读取已保存的公网核验。</p>
 </details>
 <details><summary>可选的固定时段诊断</summary>{{LEGACY}}</details>
+</section>
+<section>
+<div class="section-top"><h2>播报与邮件现在依据什么运行</h2><span>只读保存观察</span></div>
+{{DELIVERY}}
 </section>
 <section>
 <div class="section-top"><h2>02 · 输入有没有留得住</h2><span>检查最近 {{LIMIT}} 份以内的清单</span></div>
@@ -62,7 +66,7 @@ footer{font-size:12px;color:var(--muted)}footer pre{white-space:pre-wrap;overflo
 </details>
 </section>
 <footer>
-<p>本地静态报告 · 离线可读 · 不包含实时行情、模型评估或公网部署验收。<br>历史快照保留在各自目录；latest.html 在生成新报告时更新。日期与文件名可在同一次快照的 report.json 中核对。</p>
+<p>本地静态报告 · 离线可读 · 不读取实时行情、不运行模型、不探测当前公网部署。<br>历史快照保留在各自目录；latest.html 在生成新报告时更新。日期与文件名可在同一次快照的 report.json 中核对。</p>
 <details><summary>字体与许可</summary><p>拉丁文字沿用网站的 Outfit 与 IBM Plex Mono，中文使用系统字体。字体已嵌入，打开文件无需访问外网。</p><pre>{{LICENSES}}</pre></details>
 </footer>
 </main>

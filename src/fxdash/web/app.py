@@ -157,6 +157,13 @@ def create_app(output_dir: Path | None = None,
     def healthz():
         return {"ok": True, "data_version": snap().data_version}
 
+    @api.get("/briefing/operations")
+    def briefing_operations(response: Response):
+        from ..narrative.delivery_status import snapshot
+        from ..narrative import morning
+        response.headers["Cache-Control"] = "no-store"
+        return snapshot(store.output_dir, clock=morning.now_utc)
+
     # --------------------------------------------------------------- summary
     def _summary_payload(s, window: int, model: str) -> dict:
         scales: dict = {name: {"n_days": n, "pairs": {}} for name, n in SCALES.items()}

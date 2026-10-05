@@ -16,6 +16,7 @@ import { briefingBoardHtml, bindBriefingBoard, refreshBriefingStatus } from "./b
 import { distinctSummary, pairNewsDaysHtml, bindPairNewsDays } from "./pair-news.js";
 import {runtimeHtml, runtimeState} from './runtime-status.js';
 import {subscriptionHtml, bindSubscription, calendarHtml} from './briefing-extras.js';
+import {briefingOperationsHtml, bindBriefingOperations, refreshBriefingOperations} from './brief-operations.js';
 
 /* global echarts */
 
@@ -582,9 +583,10 @@ async function pageNews(view, isCurrent) {
   // the FX page makes (canonical window and model), so a static build has the file
   const win = (state.meta && state.meta.default_window) || 126;
   const model = (state.meta && state.meta.default_model) || "ols";
-  const [news, overview] = await Promise.all([
+  const [news, overview, operations] = await Promise.all([
     api("/news"),
     api(`/overview?window=${win}&model=${model}`).catch(() => null),
+    api('/briefing/operations').catch(() => null),
   ]);
   if (!isCurrent()) return;
   state.pipeline = overview ? overview.status_digest : null;
@@ -689,6 +691,7 @@ async function pageNews(view, isCurrent) {
     <div class="news">
       <section class="news__main">
         ${briefingBoardHtml(news.briefing, news.briefing_archive, build)}
+        ${briefingOperationsHtml(operations)}
         <section class="news-headlines col gap14">
           <div class="between news-section-head"><h2 class="sec">${esc(t('news.today.plain'))}</h2><time>${esc(news.today.date || '')}</time></div>
           <div class="col">${headRows}</div>
@@ -742,6 +745,7 @@ async function pageNews(view, isCurrent) {
     </div>`;
 
   bindBriefingBoard(view, news.briefing, news.briefing_archive, build);
+  bindBriefingOperations(view, operations);
   bindSubscription(view);
   const explainHtmlFor = (k) => {
     const s = byKey.get(k);                    // headlines have no Explain button; a miss is empty
@@ -1462,6 +1466,7 @@ window.addEventListener("hashchange", render);
   // file; a static build has neither, so only the ages are recomputed there
   setInterval(() => {
     refreshBriefingStatus();
+    refreshBriefingOperations();
     renderRuntime().then(refreshHealth);
     if (build.mode === "live") renderTape();
     renderPulse().then(refreshHealth);

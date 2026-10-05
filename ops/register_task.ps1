@@ -37,28 +37,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Interpreter resolution: an explicit -Python wins; otherwise the first python on
-# PATH that can import this project's dependencies; otherwise the default miniconda
-# location under the user profile. The probe imports rather than checking that a
-# file exists, because a PATH python is often another project's environment or the
-# Microsoft Store stub.
-function Resolve-Python([string]$Explicit) {
-    $ErrorActionPreference = "Continue"
-    if ($Explicit) { return @{ Path = $Explicit; Source = "-Python" } }
-    foreach ($name in @("python", "python3")) {
-        $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($cmd -and $cmd.Source) {
-            $ok = $false
-            try {
-                & $cmd.Source -c "import pandas, pyarrow" 2>$null | Out-Null
-                $ok = ($LASTEXITCODE -eq 0)
-            } catch { $ok = $false }
-            if ($ok) { return @{ Path = $cmd.Source; Source = "PATH" } }
-        }
-    }
-    return @{ Path = "$env:USERPROFILE\miniconda3\python.exe"; Source = "default location" }
-}
-$resolved = Resolve-Python $Python
+$resolved = & (Join-Path $PSScriptRoot 'setup_runtime.ps1') -ResolveOnly -Python $Python
 $Python = $resolved.Path
 
 $repo = Split-Path -Parent $PSScriptRoot

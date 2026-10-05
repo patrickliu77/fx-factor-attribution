@@ -12,10 +12,8 @@
 param([string]$TaskName = "fxdash-briefing", [string]$Python = "")
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
-if (-not $Python) { $Python = Join-Path $env:USERPROFILE "miniconda3\python.exe" }
-if (-not (Test-Path -LiteralPath $Python)) { throw "Pass -Python with the project interpreter." }
-& $Python -c "from zoneinfo import ZoneInfo; import pandas, fastapi; ZoneInfo('America/New_York')"
-if ($LASTEXITCODE -ne 0) { throw "Interpreter dependencies or tzdata are missing." }
+$resolved = & (Join-Path $PSScriptRoot 'setup_runtime.ps1') -ResolveOnly -Python $Python
+$Python = $resolved.Path
 $logDir = Join-Path $repo "outputs\logs"
 $windowlessPython = Join-Path (Split-Path -Parent $Python) "pythonw.exe"
 if (-not (Test-Path -LiteralPath $windowlessPython)) { throw "pythonw.exe is required for a windowless morning task." }

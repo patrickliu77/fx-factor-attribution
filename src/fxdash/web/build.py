@@ -74,6 +74,7 @@ def request_set(meta: dict) -> list[str]:
         "/status",
         "/market/ticker",
         "/narrative/status",
+        "/briefing/operations",
         "/news",
         "/overview" + canonical,
         "/narrative/daily" + canonical,

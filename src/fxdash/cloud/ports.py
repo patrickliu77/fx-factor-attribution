@@ -136,6 +136,14 @@ class ProductionPorts:
             _, brief = audio.install(root / "outputs", context["recap"])
             self.verified = V.verify(root / "outputs", brief, fetcher=self.fetcher, clock=self.clock, force=True)
             self.journal._owned()
+            settings = S.config(root / "outputs")
+            permitted = self.verified.get("state") == "verified"
+            if settings and S.delivery_policy(settings) == "allow_text":
+                try:
+                    S.delivery_audio(settings, V.expectation(root / "outputs", brief), self.verified, self.clock())
+                    permitted = True
+                except ValueError:
+                    permitted = False
             # Retain evidence for operations, but never reuse it as a fresh gate.
             report = B.encode(self.verified)
             digest = save_artifact(self.journal.store, report)
@@ -143,7 +151,7 @@ class ProductionPorts:
             old = self.journal.store.read(key)
             self.journal.store.compare_and_swap(key, old.version if old else None,
                 B.encode({"artifact_sha256": digest, "observed_at": self.clock().isoformat()}))
-        return self.verified.get("state") == "verified"
+        return permitted
 
     def email(self, context, journal):
         if journal is not self.journal:

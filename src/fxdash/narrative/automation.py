@@ -128,8 +128,16 @@ def after(output_dir, *, clock=M.now_utc, verifier=None, notifier=None):
     result = {'date':day,'observed_at':moment.isoformat(),'edition_hash':brief['edition_hash']}
     try:
         result['public'] = (verifier or P.verify)(output_dir,brief,clock=clock)
-        if result['public']['state'] == 'verified':
-            from .subscriptions import deliver
+        from .subscriptions import deliver, config, delivery_policy, delivery_audio
+        eligible = result['public']['state'] == 'verified'
+        settings = config(output_dir)
+        if settings and delivery_policy(settings) == 'allow_text':
+            try:
+                delivery_audio(settings, P.expectation(output_dir,brief), result['public'], moment)
+                eligible = True
+            except ValueError:
+                eligible = False
+        if eligible:
             result['email'] = (notifier or deliver)(output_dir,brief,result['public'],clock=clock)
         else:
             result['email'] = {'state':'waiting_for_public_audio'}

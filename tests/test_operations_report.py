@@ -87,6 +87,9 @@ def test_windowless_entry_generates_reports_only_in_active_gate(tmp_path, monkey
     entry = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(entry)
     monkeypatch.setattr(entry, "__file__", str(tmp_path / "ops" / "run_briefing_task.py"))
+    # This test isolates report scheduling; runtime failures have their own entry tests.
+    monkeypatch.setattr(entry.R, "runtime_status", lambda repo: {"state": "ready"})
+    monkeypatch.setattr(entry.R, "bootstrap_tools", lambda: None)
     # The entry changes process-wide streams/cwd/path; restore all through the fixture.
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "path", list(sys.path))

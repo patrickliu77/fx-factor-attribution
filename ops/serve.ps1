@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Interpreter resolution: an explicit -Python wins; otherwise the first python on
+# Interpreter resolution: an explicit -Python wins; otherwise project .venv, then the first python on
 # PATH that can import this project's dependencies; otherwise the default miniconda
 # location under the user profile. The probe imports rather than checking that a
 # file exists, because a PATH python is often another project's environment or the
@@ -28,6 +28,11 @@ $ErrorActionPreference = "Stop"
 function Resolve-Python([string]$Explicit) {
     $ErrorActionPreference = "Continue"
     if ($Explicit) { return @{ Path = $Explicit; Source = "-Python" } }
+    $projectPython = Join-Path (Split-Path -Parent $PSScriptRoot) '.venv\Scripts\python.exe'
+    if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
+        & $projectPython -c "import pandas, pyarrow, fastapi, uvicorn" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return @{ Path = $projectPython; Source = "project .venv" } }
+    }
     foreach ($name in @("python", "python3")) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
         if ($cmd -and $cmd.Source) {

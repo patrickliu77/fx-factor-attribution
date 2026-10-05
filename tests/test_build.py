@@ -53,6 +53,7 @@ def _tree(root):
 
 def test_file_for_encodes_sorted_parameters_into_the_name():
     assert B.file_for("/meta") == "api/meta.json"
+    assert B.file_for("/briefing/operations") == "api/briefing/operations.json"
     assert B.file_for("/overview?window=126&model=ols") == "api/overview.model-ols.window-126.json"
     # order in the query string does not matter, the name is canonical
     assert B.file_for("/overview?model=ols&window=126") == "api/overview.model-ols.window-126.json"
@@ -74,13 +75,14 @@ def test_request_set_covers_every_page(site_app):
     meta = TestClient(app).get("/api/meta").json()
     reqs = B.request_set(meta)
     pairs, windows, models = meta["pairs"], meta["windows"], meta["models"]
-    # 4 fixed + overview and daily at the canonical basis + weekly per combination
+    # Fixed status/operations endpoints + overview and daily at the canonical basis + weekly per combination
     # + a news feed per pair + a price series per pair and range
-    expected = (5 + 2 + 3 * len(windows) * len(models) + len(pairs) + 2 * len(windows)
+    expected = (6 + 2 + 3 * len(windows) * len(models) + len(pairs) + 2 * len(windows)
                 + len(pairs) * len(MARKET_RANGES)
                 + len(pairs) * len(windows) * len(models))
     assert len(reqs) == expected == len(set(reqs))
     assert "/news" in reqs and "/narrative/status" in reqs
+    assert "/briefing/operations" in reqs
     assert f"/overview?window={meta['default_window']}&model={meta['default_model']}" in reqs
 
 

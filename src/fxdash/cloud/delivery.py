@@ -14,10 +14,11 @@ from .state import StateError
 
 
 class GuardedProvider:
-    def __init__(self, journal: Journal, provider_factory, messages, day, verified, *, clock):
+    def __init__(self, journal: Journal, provider_factory, messages, day, verified, *, clock, settings=None, expected=None):
         self.journal, self.provider_factory = journal, provider_factory
         self.messages, self.day, self.verified, self.clock = messages, day, verified, clock
         self.campaigns, self._provider = {}, None
+        self.settings, self.expected = settings, expected
 
     def _gate(self):
         moment = self.clock()
@@ -25,7 +26,11 @@ class GuardedProvider:
         try:
             age = (moment - datetime.fromisoformat(self.verified["observed_at"])).total_seconds()
             if (local.weekday() >= 5 or local.time() < time(9) or local.date().isoformat() != self.day
-                    or self.verified.get("state") != "verified" or not 0 <= age <= 900):
+                    or not 0 <= age <= 900):
+                raise ValueError()
+            if self.settings is not None and self.expected is not None:
+                S.delivery_audio(self.settings, self.expected, self.verified, moment)
+            elif self.verified.get("state") != "verified":
                 raise ValueError()
         except (KeyError, TypeError, ValueError):
             raise StateError("delivery_gate_closed") from None
@@ -88,7 +93,9 @@ def deliver_guarded(output_dir, brief, verified, journal: Journal, *, provider_f
                 journal.remember_local_delivery(brief["date"], lang, M.read_json(path))
         expected = P.expectation(output_dir, brief)
         settings = S.config(output_dir)
-        messages = {lang: S.payload(settings, expected, expected["media"][lang], lang) for lang in ("en", "zh")}
-        return GuardedProvider(journal, provider_factory, messages, brief["date"], verified, clock=clock)
+        selected = S.delivery_audio(settings, expected, verified, clock())
+        messages = {lang: S.payload(settings, expected, selected[lang], lang) for lang in ("en", "zh")}
+        return GuardedProvider(journal, provider_factory, messages, brief["date"], verified,
+                               clock=clock, settings=settings, expected=expected)
 
     return S.deliver(output_dir, brief, verified, clock=clock, provider_factory=factory)

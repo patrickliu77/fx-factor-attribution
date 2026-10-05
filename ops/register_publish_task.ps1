@@ -22,12 +22,15 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$TaskName = "fxdash-publish",
-    [string]$At = "20:45"
+    [string]$At = "20:45",
+    [string]$Python = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
+$resolved = & (Join-Path $PSScriptRoot 'setup_runtime.ps1') -ResolveOnly -Python $Python
+$Python = $resolved.Path
 $publish = Join-Path $repo "ops\publish.ps1"
 if (-not (Test-Path $publish)) {
     throw "ops\publish.ps1 not found under $repo; run this script from inside the repository."
@@ -39,9 +42,17 @@ Write-Host "Time   : daily at $At local time (after the 19:30 pipeline and the 2
 
 $logDir = Join-Path $repo "outputs\logs"
 # Wrapped in cmd so the log redirect works the same way as the other two tasks.
-# publish.ps1 resolves the interpreter itself.
-$command = "set PYTHONIOENCODING=utf-8 && powershell -NoProfile -ExecutionPolicy Bypass " +
-           "-File `"$publish`" >> `"$logDir\publish.log`" 2>&1"
+# Bind the persistent interpreter even when Task Scheduler inherited an old PATH.
+$toolPrefix = ''
+$toolProbe = @(& $Python (Join-Path $PSScriptRoot 'check_delivery_runtime.py') --tool-directories)
+if ($LASTEXITCODE -ne 0) { throw 'Known tool discovery failed; no tasks were changed.' }
+$toolDirectories = @(($toolProbe -join '') | ConvertFrom-Json)
+if ($toolDirectories.Count -gt 0) {
+    $toolPrefix = 'set "PATH=' + ($toolDirectories -join ';') + ';%PATH%" && '
+}
+$command = 'set "PYTHONIOENCODING=utf-8" && ' + $toolPrefix +
+           "powershell -NoProfile -ExecutionPolicy Bypass -File `"$publish`" " +
+           "-Python `"$Python`" >> `"$logDir\publish.log`" 2>&1"
 
 $action = New-ScheduledTaskAction -Execute "cmd.exe" `
     -Argument "/c $command" -WorkingDirectory $repo
