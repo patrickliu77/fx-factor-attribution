@@ -4,8 +4,7 @@
     1.2, gate D1).
 
 .DESCRIPTION
-    Paths are derived from the environment at run time, never hardcoded
-    (CLAUDE.md rule 11).
+    Paths are derived from the project location at run time.
 
     This machine runs on US Central Time (UTC-06:00, UTC-05:00 under DST), not
     Beijing time. The default 19:30 local is 20:30 ET: the day's FX daily bars

@@ -4,8 +4,17 @@ const copy = (en, zh) => getLang() === 'zh' ? zh : en;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[char]));
-const TASKS = ['fxdash-live', 'fxdash-narrative', 'fxdash-publish', 'fxdash-briefing', 'fxdash-catchup'];
+const TASKS = ['fxdash-live', 'fxdash-briefing', 'fxdash-catchup'];
+const EXECUTION_TASKS = ['fxdash-briefing', 'fxdash-catchup'];
+const executionExit = {failed:1, attention_required:2, submitted_pending:0, pending:0,
+  disabled:0, confirmed:0, idle:0, not_observed:2};
+// Ready, running, not yet run, an event trigger and a queued invocation do not
+// establish an execution failure. Terminated and unscheduled tasks need attention.
+const schedulerInformation = new Set([0, 0x41300, 0x41301, 0x41303, 0x41308, 0x41325]);
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+const awareStamp = value => typeof value === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  ? Date.parse(value) : NaN;
+const exitCode = value => Number.isInteger(value) && value >= -0x80000000 && value <= 0xFFFFFFFF;
 
 function localClock(now) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) return null;
@@ -30,6 +39,38 @@ export function runtimeObservationState(report, now = new Date()) {
   return observation.state === 'stale' || age > 26 ? 'stale' : 'current';
 }
 
+function executionView(report, name, now) {
+  const clock = localClock(now);
+  const execution = report?.task_execution;
+  if (!clock || execution?.date !== clock.date) return {state:'not_observed'};
+  const row = execution.tasks?.[name];
+  if (!row || row.state === 'not_observed' && row.freshness === 'missing') return {state:'not_observed'};
+  const observed = awareStamp(row.observed_at);
+  const current = Number.isFinite(observed) && observed <= now.getTime()
+    && localClock(new Date(observed))?.date === clock.date && row.freshness === 'current';
+  if (row.state === 'unreadable') return {state:'unreadable', current};
+  if (!current || row.kind !== name.slice(7) || !exitCode(row.exit_code) || !exitCode(row.dispatch_exit_code)
+      || !Object.hasOwn(executionExit, row.delivery_state)) return {state:'unconfirmed'};
+  const expected = row.dispatch_exit_code ? 'dispatch_failed' : row.delivery_state;
+  if (row.state !== expected || row.exit_code !== (row.dispatch_exit_code || executionExit[row.delivery_state]))
+    return {state:'unconfirmed'};
+  return {state:row.state, current:true, observed_at:observed, exit_code:row.exit_code};
+}
+
+function schedulerFailure(report, name, now) {
+  if (runtimeObservationState(report, now) !== 'current') return false;
+  const task = report.runtime_observation.tasks?.[name];
+  const last = awareStamp(task?.last_run_at);
+  if (task?.state === 'unreadable' || !exitCode(task?.last_result) || task.last_result < 0 || schedulerInformation.has(task.last_result)
+      || !Number.isFinite(last) || last > now.getTime()
+      || last > awareStamp(report.runtime_observation.observed_at)
+      || localClock(new Date(last))?.date !== localClock(now)?.date) return false;
+  const execution = executionView(report, name, now);
+  // A later completed worker observation can supersede an earlier scheduler probe.
+  return !(execution.current && execution.exit_code === 0
+    && execution.observed_at > awareStamp(report.runtime_observation.observed_at));
+}
+
 export function operationsState(report, now = new Date()) {
   if (!report || report.schema_version !== 1 || !localClock(now)) return 'not_observed';
   const email = report.email;
@@ -37,6 +78,11 @@ export function operationsState(report, now = new Date()) {
   if (!email.config_enabled) return 'disabled';
   if (email.configuration_valid === false) return 'attention';
   if (email.configuration_valid !== true) return 'unconfirmed';
+  if (TASKS.some(name => {
+    const execution = executionView(report, name, now);
+    return execution.current && (execution.state === 'unreadable' || execution.exit_code !== 0)
+      || schedulerFailure(report, name, now);
+  })) return 'attention';
   const observation = runtimeObservationState(report, now);
   if (observation !== 'current') return observation;
   const runtime = report.runtime_observation.runtime;
@@ -49,13 +95,13 @@ export function operationsState(report, now = new Date()) {
     report.runtime_observation.credentials?.BANXICO_TOKEN?.configured];
   if (prerequisites.some(value => value === false)) return 'attention';
   if (prerequisites.some(value => value !== true)) return 'unconfirmed';
-  if (runtime.audio_backend === 'azure') {
-    const speechKeys = ['AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'].map(name =>
-      report.runtime_observation.credentials?.[name]?.configured);
-    if (speechKeys.some(value => value === false)) return 'attention';
-    if (speechKeys.some(value => value !== true)) return 'unconfirmed';
-  } else if (email.delivery_policy !== 'allow_text' && !['windows'].includes(runtime.audio_backend)) {
-    return 'attention';
+  if (email.delivery_policy !== 'allow_text') {
+    if (runtime.audio_backend === 'azure') {
+      const speechKeys = ['AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'].map(name =>
+        report.runtime_observation.credentials?.[name]?.configured);
+      if (speechKeys.some(value => value === false)) return 'attention';
+      if (speechKeys.some(value => value !== true)) return 'unconfirmed';
+    } else if (runtime.audio_backend !== 'windows') return 'attention';
   }
   const tasks = report.runtime_observation.tasks;
   if (!tasks || TASKS.some(name => tasks[name]?.registered !== true || tasks[name]?.enabled !== true))
@@ -109,6 +155,27 @@ function receiptHtml(row, lang) {
     ${confirmation ? `<small>${esc(confirmation)}</small>` : ''}</div>`;
 }
 
+function executionHtml(report, name, now) {
+  const execution = executionView(report, name, now);
+  const label = schedulerFailure(report, name, now) ? copy('Scheduler reported an error today', '定时任务今日报告异常')
+    : ({
+      dispatch_failed: copy('Task execution failed', '任务执行失败'),
+      failed: copy('Delivery check failed', '投递检查失败'),
+      attention_required: copy('Task needs review', '任务需要核查'),
+      submitted_pending: copy('Submission recorded; delivery pending', '已记录提交，送达待确认'),
+      pending: copy('Task completed; delivery pending', '任务已结束，投递待完成'),
+      disabled: copy('Task completed; email disabled', '任务已结束，邮件未启用'),
+      confirmed: copy('Task completed; service reports delivery', '任务已结束，服务商报告送达'),
+      idle: copy('Task checked; no delivery due', '任务已检查，无需投递'),
+      not_observed: execution.current ? copy('Task outcome needs review', '任务结果需要核查')
+        : copy('No completed task recorded today', '今日暂无任务完成记录'),
+      unreadable: copy('Task result unreadable', '任务结果不可读'),
+      unconfirmed: copy('Task result cannot be confirmed', '任务结果未能确认'),
+    }[execution.state] || copy('Task result cannot be confirmed', '任务结果未能确认'));
+  return `<div><dt>${name === 'fxdash-briefing' ? copy('Today’s morning task', '今日晨报任务')
+    : copy('Today’s catch-up task', '今日补报任务')}</dt><dd>${esc(label)}</dd></div>`;
+}
+
 export function briefingOperationsHtml(report, now = new Date()) {
   const state = operationsState(report, now);
   const valid = report?.schema_version === 1;
@@ -117,6 +184,7 @@ export function briefingOperationsHtml(report, now = new Date()) {
   const currentObservation = runtimeObservationState(report, now) === 'current';
   const taskValues = TASKS.map(name => observation?.tasks?.[name]);
   const taskLabel = !currentObservation ? copy('No current check', '暂无当前检查')
+    : TASKS.some(name => schedulerFailure(report, name, now)) ? copy('Task errors recorded today', '今日记录任务异常')
     : taskValues.every(task => task?.registered === true && task?.enabled === true)
       ? copy('Registered and enabled', '已注册并启用')
       : taskValues.some(task => task?.registered === false) ? copy('Tasks are missing', '任务未注册')
@@ -142,9 +210,10 @@ export function briefingOperationsHtml(report, now = new Date()) {
     <dl class="brief-status-grid">
       <div><dt>${copy('Email setting', '邮件设置')}</dt><dd>${email?.config_enabled === true ? copy('Enabled', '已开启')
         : email?.config_enabled === false ? copy('Disabled', '已关闭') : copy('Unknown', '未知')}</dd></div>
-      <div><dt>${copy('Local scheduled tasks', '本机定时任务')}</dt><dd>${esc(taskLabel)}</dd></div>
+      <div><dt>${copy('Daily delivery tasks', '每日投递任务')}</dt><dd>${esc(taskLabel)}</dd></div>
       <div><dt>${copy('Email credentials', '发信凭据')}</dt><dd>${esc(credentialLabel)}</dd></div>
       <div><dt>${copy('Audio policy', '语音策略')}</dt><dd>${esc(policy)}</dd></div>
+      ${EXECUTION_TASKS.map(name => executionHtml(valid ? report : null, name, now)).join('')}
       ${receiptHtml(row, 'en')}${receiptHtml(row, 'zh')}
     </dl>
     ${row ? `<p class="hint">${copy('Receipt date', '回执日期')} ${esc(row.date)}</p>` : ''}

@@ -110,12 +110,20 @@ def credential_status(*, saved=None, user_readable=None, environment=None):
     for name in CREDENTIAL_NAMES:
         process = bool(environment.get(name, "").strip())
         user = bool(saved.get(name, "").strip()) if user_readable is not None else None
-        flags[name] = True if process or user else (None if user is None else False)
+        # Scheduled Windows workers refresh from this user's persisted settings.
+        # A stale inherited process value cannot replace a deleted or unreadable
+        # registry value. Interactive/cloud invocations still use their process.
+        flags[name] = user if user_readable is True else None if user_readable is None else process
         refresh = (name in PROCESS_ONLY_NAMES and user_readable is True
                    and saved.get(name, "") != environment.get(name, ""))
         sources[name] = {"process_present": process, "user_present": user,
                          "fresh_shell_required": refresh}
-    backend = saved.get("FXDASH_AUDIO", environment.get("FXDASH_AUDIO", ""))
+    if user_readable is True:
+        backend = saved.get("FXDASH_AUDIO", "off")
+    elif user_readable is None:
+        backend = "off"
+    else:
+        backend = environment.get("FXDASH_AUDIO", "")
     backend = backend.strip().lower()
     backend = backend if backend in {"azure", "windows", "off"} else "not_configured"
     return flags, sources, backend

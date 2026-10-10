@@ -29,6 +29,10 @@ PROVIDER_CODES = {"unauthorized", "permission_denied", "invalid_parameter", "mis
                   "document_not_found", "method_not_allowed", "not_enough_credits", "duplicate_parameter",
                   "out_of_range", "duplicate_request", "account_under_validation"}
 STAT_FIELDS = ("delivered", "sent", "processed", "requests", "hardBounces", "softBounces", "complaints")
+TASK_OUTCOMES = {"failed": ("error", 1), "attention_required": ("attention", 2),
+                 "submitted_pending": ("pending", 0), "pending": ("pending", 0),
+                 "disabled": ("info", 0), "confirmed": ("info", 0), "idle": ("info", 0),
+                 "not_observed": ("attention", 2)}
 
 
 def _stamp(value):
@@ -120,6 +124,7 @@ def _folders(root, area):
 def _runtime(root, now):
     read_state, raw = _read(root, root / "automation/runtime-readiness.json")
     observation = _observation(raw.get("observed_at"), now)
+    probe_stamp = _stamp(raw.get("observed_at"))
     state = "not_observed" if read_state == "missing" else observation["freshness"]
     if read_state == "unreadable" or type(raw.get("schema_version")) is not int or raw.get("schema_version") != 1:
         state = "unreadable" if read_state != "missing" else "not_observed"
@@ -146,7 +151,7 @@ def _runtime(root, now):
         last, next_run = _stamp(task.get("last_run_at")), _stamp(task.get("next_run_at"))
         invalid_time = any(task.get(k) is not None and _stamp(task.get(k)) is None
                            for k in ("last_run_at", "next_run_at"))
-        invalid_time |= last is not None and (now is None or last > now)
+        invalid_time |= last is not None and (now is None or last > now or probe_stamp is None or last > probe_stamp)
         result = task.get("last_result")
         result = result if type(result) is int and 0 <= result <= 0xFFFFFFFF else None
         task_state = ("not_observed" if registered is None else "not_registered" if not registered else
@@ -174,6 +179,43 @@ def _runtime(root, now):
                         "dependencies_ready": dependencies if state == "current" else None,
                         "audio_backend": _enum(backend, {"azure", "windows", "off", "not_configured"}) if state == "current" else None},
             "credentials": credential_view, "tasks": task_view, "tools": tool_view}
+
+
+def _task_execution(root, day, now):
+    """Read today's completed worker outcomes, separately from runtime readiness."""
+    rows = {}
+    for kind in ("briefing", "catchup"):
+        row = {"kind": kind, "state": "not_observed", "observed_at": None,
+               "freshness": "missing", "dispatch_exit_code": None, "exit_code": None,
+               "delivery_state": None}
+        rows["fxdash-" + kind] = row
+        if day is None:
+            row.update(state="unreadable", freshness="unreadable")
+            continue
+        read_state, raw = _read(root, root / "automation" / day / "task-status" / (kind + ".json"))
+        if read_state == "missing":
+            continue
+        row["state"] = "unreadable"
+        timing = _observation(raw.get("observed_at"), now)
+        row.update(observed_at=timing["observed_at"], freshness=timing["freshness"])
+        stamp = _stamp(raw.get("observed_at"))
+        delivery = raw.get("delivery") if isinstance(raw.get("delivery"), dict) else {}
+        outcome = TASK_OUTCOMES.get(_enum(delivery.get("state"), TASK_OUTCOMES))
+        dispatch_code, exit_code = raw.get("dispatch_exit_code"), raw.get("exit_code")
+        if (read_state != "readable" or type(raw.get("schema_version")) is not int
+                or raw.get("schema_version") != 1 or raw.get("date") != day or raw.get("kind") != kind
+                or stamp is None or now is None or stamp > now or M.local_time(stamp).date().isoformat() != day
+                or type(dispatch_code) is not int or not -0x80000000 <= dispatch_code <= 0xFFFFFFFF
+                or type(exit_code) is not int or not -0x80000000 <= exit_code <= 0xFFFFFFFF or outcome is None
+                or delivery.get("severity") != outcome[0] or type(delivery.get("exit_code")) is not int
+                or delivery.get("exit_code") != outcome[1]):
+            continue
+        expected_state = "dispatch_failed" if dispatch_code else delivery["state"]
+        if raw.get("state") != expected_state or exit_code != (dispatch_code or outcome[1]):
+            continue
+        row.update(state=expected_state, dispatch_exit_code=dispatch_code, exit_code=exit_code,
+                   delivery_state=delivery["state"])
+    return {"date": day, "timezone": M.ZONE, "tasks": rows}
 
 
 def _configuration(root):
@@ -385,4 +427,5 @@ def snapshot(output_dir, *, clock=M.now_utc):
              "today": {"date": day, "timezone": M.ZONE, "phase": phase, "due": phase == "delivery_due",
                        "state": today_state, "languages": today_languages}}
     return {"schema_version": 1, "observed_at": now.isoformat() if now else None,
-            "scope": "saved_artifacts_only", "runtime_observation": runtime, "email": email, "briefing": briefing}
+            "scope": "saved_artifacts_only", "runtime_observation": runtime,
+            "task_execution": _task_execution(root, day, now), "email": email, "briefing": briefing}

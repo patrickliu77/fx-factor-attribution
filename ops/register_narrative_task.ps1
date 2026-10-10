@@ -18,9 +18,9 @@
     console code page), a legacy that would need the task re-registered to
     change; this task is new, so it is set correctly from the start.
 
-    Credentials come from the environment only: GEMINI_API_KEY must be a USER
-    level environment variable for the scheduler to see it. The key appears
-    neither in this script nor in any artifact.
+    The scheduled entry refreshes GEMINI_API_KEY from the user's saved settings
+    on each run, including changes made after the scheduler started. The key
+    appears neither in this script nor in any artifact.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File ops\register_narrative_task.ps1 -WhatIf
@@ -50,14 +50,14 @@ Write-Host "Repo   : $repo"
 Write-Host "Python : $Python ($($resolved.Source))"
 Write-Host "Time   : daily at $At local time (after the 19:30 pipeline)"
 
-# Credential check. The scheduler reads USER level environment variables; one
-# set inside a session does not count.
+# Credential check. The scheduled entry reads USER level environment variables;
+# one set only inside a session does not count.
 $userKey = [Environment]::GetEnvironmentVariable("GEMINI_API_KEY", "User")
 if ([string]::IsNullOrWhiteSpace($userKey)) {
     Write-Host ""
     Write-Host "  !! GEMINI_API_KEY is not a user level environment variable." -ForegroundColor Yellow
     Write-Host "     The task still registers, but every run fails at generation and writes a failure record." -ForegroundColor Yellow
-    Write-Host "     To set it: setx GEMINI_API_KEY <key>, then restart the terminal." -ForegroundColor Yellow
+    Write-Host "     Restore it with ops\configure_delivery_credentials.ps1 using hidden input." -ForegroundColor Yellow
 } else {
     Write-Host "Key    : GEMINI_API_KEY found in user environment (length $($userKey.Length), value not printed)"
 }
@@ -66,7 +66,7 @@ $logDir = Join-Path $repo "outputs\logs"
 # PYTHONIOENCODING is set to utf-8 explicitly: the pipeline's GBK live.log is
 # a legacy this new task does not repeat
 $command = "set PYTHONPATH=src && set PYTHONIOENCODING=utf-8 && " +
-           "`"$Python`" -W ignore -m fxdash.narrative.run " +
+           "`"$Python`" -W ignore -m fxdash.narrative.run --scheduled-task " +
            ">> `"$logDir\narrative.log`" 2>&1"
 
 $action = New-ScheduledTaskAction -Execute "cmd.exe" `

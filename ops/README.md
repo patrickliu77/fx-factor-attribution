@@ -65,14 +65,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ops\configure_delivery_crede
 
 The setup installs the unchanged exact requirements into `.venv`, verifies the
 base installation and dependencies, and makes no task changes. The credential
-helper uses hidden local prompts and retains existing settings by default. Add
+helper uses hidden local prompts and retains existing settings by default. Retained
+values are also loaded into that invocation's process after all inputs validate.
+It cannot update the environment of an already running parent terminal. Add
 `-EnableAzureAudio` only when restoring an approved Azure Speech account; saving
 credentials alone does not enable audio or establish authentication. FFmpeg and
 ffprobe must be available to the task user.
 
 The read-only check writes `outputs/automation/runtime-readiness.json` with
 presence flags and task metadata. It never stores keys or calls providers.
-Open a new terminal if it reports `fresh_shell_required` before registering.
+`fresh_shell_required` describes the checking process: open a new terminal before
+running provider commands manually. Windows scheduled entries refresh their own
+credential environment on every run, so they do not require a scheduler restart
+after a key is saved, replaced or removed.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ops\register_task.ps1 -WhatIf
@@ -216,11 +221,26 @@ the contract or a per-key sum of them.
 
 ## Environment variables
 
-`FRED_API_KEY`, `BANXICO_TOKEN` and `GEMINI_API_KEY` are read from user-level
-environment variables. Set them with `setx NAME <value>` and restart the
-terminal; the Task Scheduler reads the registering user's environment, so a
-variable set inside a session does not reach it. No key appears in any script,
-log, cache, or artifact.
+Use `ops/configure_delivery_credentials.ps1` to save credentials through hidden
+local prompts. Windows live, narrative, morning and catch-up task entries read
+only their fixed credential names from the task user's saved environment before
+doing work. A rotated key replaces the worker's inherited value; a removed,
+invalid or unreadable saved key clears the old value. Speech is off unless its
+saved selection is valid; Azure also requires its saved key and region.
+
+Manual CLI and cloud invocations continue to use their explicitly supplied
+process environment. A variable set only inside a terminal does not configure a
+Windows scheduled worker. The readiness check uses saved user settings for
+Windows task configuration, rather than treating a stale process key as ready.
+Credentials never appear in task arguments, reports or logs.
+
+The briefing delivery panel shows the day's terminal morning and catch-up task
+results separately from email receipts. A later execution failure requires
+attention even when an earlier submission is recorded; it does not erase that
+submission or authorize a resend. Missing, malformed, future or previous-day
+observations cannot establish today's success. Daily delivery readiness requires
+the live, morning and catch-up tasks; independent evening narrative and publish
+tasks are still observable but do not block this path.
 
 ## Windows notes
 

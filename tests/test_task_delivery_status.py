@@ -7,7 +7,8 @@ import sys
 
 import pytest
 
-from fxdash.narrative import automation, catchup, morning, morning_dispatch, speech_settings
+from fxdash.narrative import automation, catchup, morning, morning_dispatch
+from fxdash import scheduled_environment
 
 
 OPS = Path(__file__).resolve().parents[1] / "ops"
@@ -67,7 +68,7 @@ def scheduled_fixture(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(R, "runtime_status", lambda *args: {"state": "ready"})
     monkeypatch.setattr(R, "bootstrap_tools", lambda: {})
-    monkeypatch.setattr(speech_settings, "refresh_user_speech_environment", lambda: {})
+    monkeypatch.setattr(scheduled_environment, "refresh", lambda kind: {'state': 'refreshed'})
     monkeypatch.setattr(morning, "slot", lambda moment: "publish")
     monkeypatch.setattr(catchup, "due", lambda moment: True)
     monkeypatch.setattr(automation, "before", lambda *args: {"state": "inputs_ready", "proceed": True})
@@ -106,7 +107,7 @@ def test_actual_wrapper_uses_delivery_result_once_and_restores_streams(scheduled
 @pytest.mark.parametrize("kind", ["briefing", "catchup"])
 def test_unhealthy_runtime_exits_without_refreshing_credentials_or_dispatch(scheduled_fixture, monkeypatch, kind):
     monkeypatch.setattr(R, "runtime_status", lambda *args: {"state": "not_persistent"})
-    monkeypatch.setattr(speech_settings, "refresh_user_speech_environment", lambda: pytest.fail("credentials touched"))
+    monkeypatch.setattr(scheduled_environment, "refresh", lambda kind: pytest.fail("credentials touched"))
     monkeypatch.setattr(morning_dispatch, "main", lambda *args: pytest.fail("real dispatch"))
     monkeypatch.setattr(catchup, "main", lambda *args: pytest.fail("real dispatch"))
     assert entry(kind).main(scheduled_fixture) == 3

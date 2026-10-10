@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-    Register a five-minute clock gate for the 09:00 New York text briefing.
+    Register a five-minute clock gate for the 09:00 New York briefing.
 .DESCRIPTION
     Python evaluates America/New_York, including DST. Outside 08:50..10:00 ET
     on weekdays the command writes a local clock observation only. No networking,
-    generation or publishing. A missed weekday edition returns code 2.
+    generation or publishing. A missed morning window is recorded as idle;
+    the separate catch-up task handles an eligible late edition.
     Collection starts at 08:50; publication starts at 09:00. Late starts cannot
     fabricate a morning input packet. Existing evening tasks are unchanged.
 #>
@@ -35,12 +36,13 @@ $settings = New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable `
 $settings.IdleSettings.StopOnIdleEnd = $false
 $settings.IdleSettings.RestartOnIdle = $false
 Write-Host "Briefing: 08:50 collection, 09:00 publication, America/New_York."
-Write-Host "Five-minute morning clock gate; 12:50..15:00 UTC weekdays. No audio."
+Write-Host "Five-minute morning clock gate; 12:50..15:00 UTC weekdays."
+Write-Host "Inside the delivery window, configured generation, audio, publishing and email may run."
 Write-Host "Keep the user signed in. Wake settings cannot start a powered-off computer."
-if ($PSCmdlet.ShouldProcess($TaskName, "Register the text briefing clock gate")) {
+if ($PSCmdlet.ShouldProcess($TaskName, "Register the briefing and delivery clock gate")) {
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-        -Settings $settings -Description "FX morning text briefing, New York time" -Force | Out-Null
+        -Settings $settings -Description "FX morning briefing and configured delivery, New York time" -Force | Out-Null
     $registered = [xml](Export-ScheduledTask -TaskName $TaskName)
     $ns = New-Object System.Xml.XmlNamespaceManager($registered.NameTable)
     $ns.AddNamespace("t", "http://schemas.microsoft.com/windows/2004/02/mit/task")

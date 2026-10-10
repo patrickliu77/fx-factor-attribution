@@ -3,6 +3,7 @@
     Restore selected delivery credentials through hidden local prompts.
 .DESCRIPTION
     Retains existing user settings unless -ReplaceExisting is supplied.
+    Loads retained settings into this process after all input checks succeed.
     Saves only the named settings to the Windows user environment (plaintext,
     not a secret vault). Does not call providers, send mail, generate speech,
     publish a site or register tasks. Run -WhatIf to inspect the selected names.
@@ -20,10 +21,12 @@ if (-not $PSCmdlet.ShouldProcess(($credentialNames -join ', '), 'Read hidden inp
 Write-Host 'Enter credentials in this local window only. Hidden prompts do not echo input.'
 Write-Host 'Windows user environment storage is plaintext. Existing saved values are retained by default.'
 $credentialValues = @{}
+$credentialUserValues = @{}
 try {
     foreach ($credentialName in $credentialNames) {
         $credentialExisting = [Environment]::GetEnvironmentVariable($credentialName, 'User')
         if (-not $ReplaceExisting -and -not [string]::IsNullOrWhiteSpace($credentialExisting)) {
+            $credentialValues[$credentialName] = $credentialExisting
             Write-Host "$credentialName is already saved; retained."
             continue
         }
@@ -45,26 +48,35 @@ try {
             }
         }
         $credentialValues[$credentialName] = $credentialValue
+        $credentialUserValues[$credentialName] = $credentialValue
         $credentialValue = $null
     }
     if ($EnableAzureAudio) {
         foreach ($credentialRequired in @('AZURE_SPEECH_KEY','AZURE_SPEECH_REGION')) {
-            if (-not $credentialValues.ContainsKey($credentialRequired) -and
-                [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($credentialRequired, 'User'))) {
-                throw 'Azure key and region are both required. No new values were saved.'
+            if (-not $credentialValues.ContainsKey($credentialRequired)) {
+                $credentialExisting = [Environment]::GetEnvironmentVariable($credentialRequired, 'User')
+                if ([string]::IsNullOrWhiteSpace($credentialExisting)) {
+                    throw 'Azure key and region are both required. No new values were saved.'
+                }
+                $credentialValues[$credentialRequired] = $credentialExisting
             }
         }
         $credentialValues['FXDASH_AUDIO'] = 'azure'
+        $credentialUserValues['FXDASH_AUDIO'] = 'azure'
     }
     foreach ($credentialName in $credentialValues.Keys) {
-        [Environment]::SetEnvironmentVariable($credentialName, $credentialValues[$credentialName], 'User')
+        if ($credentialUserValues.ContainsKey($credentialName)) {
+            [Environment]::SetEnvironmentVariable($credentialName, $credentialUserValues[$credentialName], 'User')
+            Write-Host "$credentialName saved; authentication has not been verified."
+        }
         [Environment]::SetEnvironmentVariable($credentialName, $credentialValues[$credentialName], 'Process')
-        Write-Host "$credentialName saved; authentication has not been verified."
     }
 } finally {
     $credentialValue = $null
     $credentialExisting = $null
     $credentialValues.Clear()
+    $credentialUserValues.Clear()
 }
+Write-Host 'Selected settings are loaded into this PowerShell process; authentication has not been verified.'
 Write-Host 'Open a new PowerShell window before checking readiness or registering tasks.'
 Write-Host 'No provider request was made. Existing email sender, forms, lists and send receipts were retained.'

@@ -191,9 +191,15 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="offline; print only the trigger verdict, search queries and fact tables")
     parser.add_argument("--max-cost", type=float, default=DEFAULT_MAX_COST_USD)
+    parser.add_argument("--scheduled-task", action="store_true",
+                        help="refresh the saved user credential for the registered Windows task")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if args.scheduled_task:
+        from ..scheduled_environment import refresh
+        observed = refresh('narrative')
+        log.info("scheduled_environment %s", observed['state'])
     result = run(date=args.date, rewrite=args.rewrite, dry_run=args.dry_run,
                  max_cost_usd=args.max_cost)
 

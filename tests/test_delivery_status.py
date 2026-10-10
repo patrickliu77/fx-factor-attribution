@@ -73,6 +73,14 @@ def collect(root, now=NOW):
     return result
 
 
+def task_status(root, *, day=DAY, kind="briefing", **changes):
+    value = {"schema_version": 1, "observed_at": (NOW - timedelta(minutes=5)).isoformat(),
+             "date": day, "kind": kind, "state": "dispatch_failed", "dispatch_exit_code": 1,
+             "delivery": {"state": "failed", "severity": "error", "exit_code": 1}, "exit_code": 1}
+    value.update(changes)
+    return write(root, f"automation/{day}/task-status/{kind}.json", value)
+
+
 def digest_tree(root):
     return {p.relative_to(root): hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob("*") if p.is_file()}
 
@@ -80,6 +88,7 @@ def digest_tree(root):
 def test_missing_probe_preserves_enabled_configuration_without_reading_host(tmp_path, monkeypatch):
     from fxdash.narrative import subscriptions, public_delivery, audio_briefing
     configuration(tmp_path)
+    task_status(tmp_path)
     def forbidden(*args, **kwargs):
         raise AssertionError("Read-only status must not inspect host or perform delivery")
     monkeypatch.setattr(subscriptions, "api_key", forbidden)
@@ -92,8 +101,84 @@ def test_missing_probe_preserves_enabled_configuration_without_reading_host(tmp_
     assert result["email"]["credential_configured"] is None
     assert result["email"]["account_validation"] == "not_verified"
     assert result["runtime_observation"]["state"] == "not_observed"
+    assert result["task_execution"]["tasks"]["fxdash-briefing"]["state"] == "dispatch_failed"
     assert all(task["registered"] is None for task in result["runtime_observation"]["tasks"].values())
     assert digest_tree(tmp_path) == before
+
+
+@pytest.mark.parametrize("state,dispatch_code,exit_code,delivery_state,severity", [
+    ("dispatch_failed", 7, 7, "confirmed", "info"), ("dispatch_failed", -1073741510, -1073741510, "failed", "error"),
+    ("failed", 0, 1, "failed", "error"),
+    ("attention_required", 0, 2, "attention_required", "attention"),
+    ("submitted_pending", 0, 0, "submitted_pending", "pending"), ("pending", 0, 0, "pending", "pending"),
+    ("disabled", 0, 0, "disabled", "info"), ("confirmed", 0, 0, "confirmed", "info"),
+    ("idle", 0, 0, "idle", "info"), ("not_observed", 0, 2, "not_observed", "attention"),
+])
+def test_current_completed_task_outcomes_are_projected_separately(tmp_path, state, dispatch_code, exit_code,
+                                                                 delivery_state, severity):
+    delivery_code = 1 if delivery_state == "failed" else 2 if delivery_state in {"attention_required", "not_observed"} else 0
+    task_status(tmp_path, kind="catchup", state=state, dispatch_exit_code=dispatch_code, exit_code=exit_code,
+                delivery={"state": delivery_state, "severity": severity, "exit_code": delivery_code})
+    result = collect(tmp_path)
+    execution = result["task_execution"]
+    assert execution["date"] == DAY and execution["timezone"] == "America/New_York"
+    row = execution["tasks"]["fxdash-catchup"]
+    assert row["state"] == state and row["exit_code"] == exit_code and row["freshness"] == "current"
+    assert row["delivery_state"] == delivery_state and row["dispatch_exit_code"] == dispatch_code
+    assert execution["tasks"]["fxdash-briefing"]["state"] == "not_observed"
+    assert result["runtime_observation"]["state"] == "not_observed"
+
+
+def test_new_task_failure_keeps_submitted_receipts_and_does_not_refresh_readiness(tmp_path):
+    probe(tmp_path, observed_at=(NOW - timedelta(hours=27)).isoformat())
+    configuration(tmp_path)
+    _, _, identity = edition(tmp_path)
+    for lang in D.LANGUAGES:
+        receipt(tmp_path, identity, lang=lang)
+    task_status(tmp_path, provider_error="DO_NOT_EXPORT", campaign_id=42, executable="DO_NOT_EXPORT")
+    before = digest_tree(tmp_path)
+    result = collect(tmp_path)
+    assert result["task_execution"]["tasks"]["fxdash-briefing"]["state"] == "dispatch_failed"
+    assert result["email"]["today"]["state"] == "submitted"
+    assert all(row["state"] == "submitted" for row in result["email"]["today"]["languages"].values())
+    assert result["runtime_observation"]["state"] == "stale" and result["email"]["credential_configured"] is None
+    assert "DO_NOT_EXPORT" not in json.dumps(result) and "campaign_id" not in json.dumps(result)
+    assert digest_tree(tmp_path) == before
+
+
+@pytest.mark.parametrize("changes", [
+    {"schema_version": True}, {"schema_version": 2}, {"date": "2026-10-02"}, {"kind": "catchup"},
+    {"observed_at": (NOW + timedelta(seconds=1)).isoformat()}, {"observed_at": "2026-10-05T12:00:00"},
+    {"observed_at": "bad"}, {"observed_at": "2026-10-05T03:59:59Z"},
+    {"dispatch_exit_code": True}, {"dispatch_exit_code": -2**31-1}, {"dispatch_exit_code": 2**32},
+    {"exit_code": True}, {"exit_code": -2**31-1}, {"exit_code": 2**32}, {"exit_code": 0},
+    {"state": "confirmed"}, {"state": []}, {"delivery": []},
+    {"delivery": {"state": "unknown", "severity": "error", "exit_code": 1}},
+    {"delivery": {"state": "failed", "severity": "info", "exit_code": 1}},
+    {"delivery": {"state": "failed", "severity": "error", "exit_code": True}},
+])
+def test_invalid_task_status_cannot_claim_a_current_outcome(tmp_path, changes):
+    path = task_status(tmp_path)
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value.update(changes)
+    write(tmp_path, f"automation/{DAY}/task-status/briefing.json", value)
+    row = collect(tmp_path)["task_execution"]["tasks"]["fxdash-briefing"]
+    assert row["state"] == "unreadable" and row["exit_code"] is None and row["dispatch_exit_code"] is None
+
+
+@pytest.mark.parametrize("raw", ["not json", "[]", "null", '{"observed_at":NaN}'])
+def test_malformed_task_status_is_unreadable(tmp_path, raw):
+    path = task_status(tmp_path)
+    path.write_text(raw, encoding="utf-8")
+    row = collect(tmp_path)["task_execution"]["tasks"]["fxdash-briefing"]
+    assert row["state"] == "unreadable" and row["observed_at"] is None and row["exit_code"] is None
+
+
+def test_previous_days_task_status_cannot_be_used_as_todays_execution(tmp_path):
+    task_status(tmp_path, day="2026-10-02", observed_at="2026-10-02T14:00:00Z")
+    execution = collect(tmp_path)["task_execution"]
+    assert execution["date"] == DAY and all(row["state"] == "not_observed" for row in execution["tasks"].values())
+    assert all(row["observed_at"] is None for row in execution["tasks"].values())
 
 
 def test_recent_probe_has_presence_only_and_allows_future_next_run(tmp_path):
@@ -144,6 +229,13 @@ def test_invalid_runtime_readiness_cannot_claim_ready(tmp_path, change):
 def test_task_last_run_must_be_valid_and_not_future(tmp_path, stamp):
     _, value = probe(tmp_path)
     value["tasks"]["fxdash-briefing"]["last_run_at"] = stamp
+    write(tmp_path, "automation/runtime-readiness.json", value)
+    assert collect(tmp_path)["runtime_observation"]["tasks"]["fxdash-briefing"]["state"] == "unreadable"
+
+
+def test_task_last_run_cannot_happen_after_the_saved_scheduler_probe(tmp_path):
+    _, value = probe(tmp_path, observed_at=(NOW - timedelta(hours=2)).isoformat())
+    value["tasks"]["fxdash-briefing"]["last_result"] = 1
     write(tmp_path, "automation/runtime-readiness.json", value)
     assert collect(tmp_path)["runtime_observation"]["tasks"]["fxdash-briefing"]["state"] == "unreadable"
 

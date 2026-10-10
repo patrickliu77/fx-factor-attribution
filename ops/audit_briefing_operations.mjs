@@ -40,9 +40,10 @@ assert.equal(actual.scope, 'saved_artifacts_only');
 const serialized = JSON.stringify(actual);
 for (const privateField of ['campaign_id','payload_hash','edition_hash','sender_footer','listIds','htmlContent'])
   assert.ok(!serialized.includes('"'+privateField+'"'), 'Operations API exposed '+privateField);
-assert.notEqual(actual.email.today.date, '2026-09-18');
-assert.ok(actual.email.history.some(item=>item.date==='2026-09-18'
-  && item.languages.en.state==='submitted' && item.languages.zh.state==='review_required'));
+assert.ok([true,false,null].includes(actual.email.credential_configured));
+assert.ok(Array.isArray(actual.email.history));
+assert.ok(actual.email.today.date === null || /^\d{4}-\d{2}-\d{2}$/.test(actual.email.today.date));
+assert.ok(tasks.every(name=>typeof actual.runtime_observation.tasks[name]==='object'));
 const actualProjection = {
   api_status:actualResponse.status, cache_control:actualResponse.headers.get('cache-control'),
   runtime_state:actual.runtime_observation.state,
@@ -52,9 +53,10 @@ const actualProjection = {
     en:actual.email.today.languages.en.state,zh:actual.email.today.languages.zh.state},
   historical_counts:actual.email.counts,
 };
-assert.equal(actualProjection.credential_configured, false, 'Expected the saved missing-key observation');
-assert.equal(actualProjection.missing_tasks.length, 5, 'Expected the saved missing-task observation');
-
+const missingPrerequisites = ready();
+missingPrerequisites.email.credential_configured = false;
+missingPrerequisites.email.history = [row('submitted','review_required','2026-09-18')];
+for (const name of tasks) missingPrerequisites.runtime_observation.tasks[name] = {registered:false,enabled:null};
 const stale = ready();
 stale.runtime_observation.observed_at = new Date(Date.parse(fixed)-27*3600000).toISOString();
 const historical = ready();
@@ -68,14 +70,55 @@ submitted.email.today = {...row('submitted','submitted'),phase:'delivery_due',du
 submitted.email.today.languages.en.confirmation = {state:'provider_sent',stats:{sent:2,delivered:0},observed_at:fixed};
 const wrongDate = ready();
 wrongDate.email.today = {...row('submitted','submitted','2026-09-18'),phase:'delivery_due',due:true};
+const taskFailure = ready();
+taskFailure.email.today = {...row('submitted','submitted'),phase:'delivery_due',due:true};
+taskFailure.task_execution = {date:'2026-10-05',timezone:'America/New_York',tasks:{
+  'fxdash-briefing':{kind:'briefing',state:'dispatch_failed',observed_at:'2026-10-05T16:55:00Z',
+    freshness:'current',dispatch_exit_code:1,exit_code:1,delivery_state:'failed',
+    raw_error:'DO_NOT_EXPOSE_PROVIDER_ID'},
+}};
+const taskAttention = structuredClone(taskFailure);
+Object.assign(taskAttention.task_execution.tasks['fxdash-briefing'], {
+  state:'attention_required',dispatch_exit_code:0,exit_code:2,delivery_state:'attention_required',
+});
+const staleTaskFailure = structuredClone(taskFailure);
+staleTaskFailure.runtime_observation.state = 'stale';
+staleTaskFailure.runtime_observation.observed_at = stale.runtime_observation.observed_at;
+const schedulerFailure = ready();
+schedulerFailure.email.today = {...row('submitted','submitted'),phase:'delivery_due',due:true};
+Object.assign(schedulerFailure.runtime_observation.tasks['fxdash-briefing'], {
+  last_run_at:'2026-10-05T16:55:00Z',last_result:1,
+});
+const schedulerRunning = structuredClone(schedulerFailure);
+schedulerRunning.runtime_observation.tasks['fxdash-briefing'].last_result = 0x41301;
+const optionalEvening = ready();
+delete optionalEvening.runtime_observation.tasks['fxdash-narrative'];
+optionalEvening.runtime_observation.tasks['fxdash-publish'].enabled = false;
+const textWithoutSpeech = ready();
+textWithoutSpeech.runtime_observation.credentials.AZURE_SPEECH_KEY.configured = false;
+textWithoutSpeech.runtime_observation.credentials.AZURE_SPEECH_REGION.configured = false;
+const submittedTextWithoutSpeech = structuredClone(textWithoutSpeech);
+submittedTextWithoutSpeech.email.today = {...row('submitted','submitted'),phase:'delivery_due',due:true};
+const requiredSpeechMissing = structuredClone(textWithoutSpeech);
+requiredSpeechMissing.email.delivery_policy = 'require_audio';
 const scenarios = [
-  {name:'actual-missing-prerequisites', report:actual, expected:'attention', actual:true},
+  {name:'actual-saved-observations', report:actual, actual:true},
+  {name:'missing-prerequisites', report:missingPrerequisites, expected:'attention'},
   {name:'api-unavailable', unavailable:true, expected:'not_observed'},
   {name:'stale-runtime', report:stale, expected:'stale'},
   {name:'historical-success', report:historical, expected:'waiting'},
   {name:'today-language-difference', report:partial, expected:'attention'},
   {name:'today-submitted', report:submitted, expected:'submitted'},
   {name:'wrong-today-date', report:wrongDate, expected:'waiting'},
+  {name:'today-task-failed-with-submitted-receipts', report:taskFailure, expected:'attention'},
+  {name:'today-task-needs-review', report:taskAttention, expected:'attention'},
+  {name:'stale-runtime-current-task-failure', report:staleTaskFailure, expected:'attention'},
+  {name:'scheduler-last-result-failed', report:schedulerFailure, expected:'attention'},
+  {name:'scheduler-running-is-not-failure', report:schedulerRunning, expected:'submitted'},
+  {name:'optional-evening-tasks-unavailable', report:optionalEvening, expected:'waiting'},
+  {name:'text-policy-speech-unavailable', report:textWithoutSpeech, expected:'waiting'},
+  {name:'submitted-text-policy-speech-unavailable', report:submittedTextWithoutSpeech, expected:'submitted'},
+  {name:'audio-policy-speech-required', report:requiredSpeechMissing, expected:'attention'},
 ];
 const browser = await chromium.launch({headless:true});
 const results = [], errors = [], externalAttempts = [];
@@ -101,8 +144,10 @@ try {
       await page.goto(base+'/#/news');
       const panel = page.locator('.brief-operations');
       await panel.waitFor();
-      assert.equal(await panel.getAttribute('data-operations-state'),scenario.expected,
-        `${scenario.name}/${lang}/${width}`);
+      const observedState = await panel.getAttribute('data-operations-state');
+      if (scenario.actual) assert.ok(['not_observed','unconfirmed','stale','attention','disabled',
+        'weekend','before_window','submitted','waiting'].includes(observedState));
+      else assert.equal(observedState,scenario.expected,`${scenario.name}/${lang}/${width}`);
       await panel.locator('summary').click();
       assert.ok(await panel.evaluate(element=>element.open));
       const text = await panel.innerText();
@@ -112,7 +157,7 @@ try {
         const policy = panel.locator('dt').filter({hasText:lang==='zh'?'语音策略':'Audio policy'}).locator('..').locator('dd');
         assert.equal(await policy.innerText(),lang==='zh'?'未知':'Unknown');
       }
-      if (scenario.name==='actual-missing-prerequisites') {
+      if (scenario.name==='missing-prerequisites') {
         assert.ok(text.includes(lang==='zh'?'任务未注册':'Tasks are missing'));
         assert.ok(text.includes(lang==='zh'?'发信凭据缺失':'Email credentials are missing'));
         assert.ok(text.includes('2026-09-18'));
@@ -138,6 +183,24 @@ try {
         assert.ok(text.includes(lang==='zh'?'文字版':'Text only'));
         assert.ok(text.includes(lang==='zh'?'送达尚未确认':'delivery is not confirmed'));
       }
+      if (scenario.name.includes('task-failed-with-submitted') || scenario.name==='stale-runtime-current-task-failure') {
+        assert.ok(text.includes(lang==='zh'?'任务执行失败':'Task execution failed'));
+        assert.ok(text.includes(lang==='zh'?'已提交邮件服务商':'Submitted to the email service'));
+      }
+      if (scenario.name==='today-task-needs-review') {
+        assert.ok(text.includes(lang==='zh'?'任务需要核查':'Task needs review'));
+        assert.ok(text.includes(lang==='zh'?'已提交邮件服务商':'Submitted to the email service'));
+      }
+      if (scenario.name==='scheduler-last-result-failed')
+        assert.ok(text.includes(lang==='zh'?'今日报告异常':'reported an error today'));
+      if (scenario.name==='optional-evening-tasks-unavailable') {
+        assert.ok(text.includes(lang==='zh'?'每日投递任务':'Daily delivery tasks'));
+        assert.ok(text.includes(lang==='zh'?'已注册并启用':'Registered and enabled'));
+      }
+      if (scenario.name==='text-policy-speech-unavailable' || scenario.name==='submitted-text-policy-speech-unavailable')
+        assert.ok(text.includes(lang==='zh'?'可发送已验证文字版':'Verified text can be sent without audio'));
+      if (scenario.name==='audio-policy-speech-required')
+        assert.ok(text.includes(lang==='zh'?'要求双语音频验证通过':'Verified bilingual audio required'));
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
         `Horizontal overflow ${scenario.name}/${lang}/${width}`);
       const screenshot = `${scenario.name}-${lang}-${width}.png`;
@@ -150,7 +213,7 @@ try {
         assert.equal(await page.locator('.brief-operations').getAttribute('data-operations-state'),'waiting');
         assert.ok(await page.locator('.brief-operations').evaluate(element=>element.open));
       }
-      results.push({scenario:scenario.name,lang,width,state:scenario.expected,screenshot,
+      results.push({scenario:scenario.name,lang,width,state:observedState,screenshot,
         no_provider_identifiers:true,no_horizontal_overflow:true,
         next_day_downgrade:scenario.name==='today-submitted'});
       await context.close();

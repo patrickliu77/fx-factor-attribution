@@ -36,6 +36,40 @@ def test_registry_access_denied_is_unknown_not_absent():
     assert all(value["user_present"] is None for value in sources.values())
 
 
+def test_deleted_user_key_cannot_be_replaced_by_a_stale_scheduler_environment():
+    flags, sources, backend = R.credential_status(
+        saved={}, user_readable=True,
+        environment={"GEMINI_API_KEY": "stale-secret", "FXDASH_AUDIO": "azure",
+                     "AZURE_SPEECH_KEY": "stale-speech-secret"},
+    )
+    assert flags["GEMINI_API_KEY"] is False
+    assert flags["AZURE_SPEECH_KEY"] is False
+    assert sources["GEMINI_API_KEY"]["process_present"] is True
+    assert sources["GEMINI_API_KEY"]["fresh_shell_required"] is True
+    assert backend == "off"
+
+
+def test_unreadable_user_settings_cannot_borrow_process_keys_or_enable_speech():
+    flags, sources, backend = R.credential_status(
+        saved={}, user_readable=None,
+        environment={"GEMINI_API_KEY": "stale-secret", "FXDASH_AUDIO": "azure"},
+    )
+    assert flags["GEMINI_API_KEY"] is None
+    assert sources["GEMINI_API_KEY"]["process_present"] is True
+    assert backend == "off"
+
+
+def test_non_windows_readiness_uses_the_invocations_process_settings():
+    flags, sources, backend = R.credential_status(
+        saved={}, user_readable=False,
+        environment={"GEMINI_API_KEY": "explicit-cloud-secret", "FXDASH_AUDIO": "azure"},
+    )
+    assert flags["GEMINI_API_KEY"] is True
+    assert flags["FRED_API_KEY"] is False
+    assert sources["GEMINI_API_KEY"]["fresh_shell_required"] is False
+    assert backend == "azure"
+
+
 def test_invalid_audio_backend_is_not_echoed():
     _, _, backend = R.credential_status(saved={"FXDASH_AUDIO": "private arbitrary value"},
                                        user_readable=True, environment={})

@@ -8,30 +8,14 @@ Interactive CLI invocations continue to use their own process environment.
 from __future__ import annotations
 
 import os
-import sys
+
+from .. import scheduled_environment
 
 NAMES = ("FXDASH_AUDIO", "AZURE_SPEECH_KEY", "AZURE_SPEECH_REGION")
 
 
 def _read_user_environment():
-    if sys.platform != "win32":
-        return {}
-    import winreg
-    try:
-        settings = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ)
-    except FileNotFoundError:
-        return {}
-    values = {}
-    with settings:
-        for name in NAMES:
-            try:
-                value, kind = winreg.QueryValueEx(settings, name)
-            except FileNotFoundError:
-                continue
-            # The setup helper stores literal strings. Do not expand references
-            # to other environment variables or accept arbitrary registry types.
-            values[name] = value if kind == winreg.REG_SZ and isinstance(value, str) else None
-    return values
+    return scheduled_environment._read_user_environment(NAMES)
 
 
 def refresh_user_speech_environment():

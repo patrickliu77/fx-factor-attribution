@@ -195,6 +195,9 @@ def supervise(repo, output_dir, *, executable=None, runner=subprocess.run, clock
                 atomic_json(root/'last_success.json', previous)
             env = dict(os.environ, PYTHONPATH=str(repo/'src'), PYTHONUNBUFFERED='1',
                        PYTHONIOENCODING='utf-8', PYTHONFAULTHANDLER='1')
+            if source == 'scheduled_task':
+                from .scheduled_environment import refresh
+                row['environment_refresh'] = refresh('live', environment=env)
             exe = Path(executable or sys.executable)
             if exe.name.lower() == 'pythonw.exe':
                 exe = exe.with_name('python.exe')

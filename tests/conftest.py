@@ -46,6 +46,11 @@ def isolated_outputs(tmp_path, monkeypatch):
     # or overwrite the test-only off switch with a real user preference.
     from fxdash.narrative import speech_settings
     monkeypatch.setattr(speech_settings, "_read_user_environment", lambda: {})
+    from fxdash import scheduled_environment
+    monkeypatch.setattr(scheduled_environment, "_read_user_environment", lambda names: {})
+    for name in scheduled_environment.NAMES:
+        if name != "FXDASH_AUDIO":
+            monkeypatch.delenv(name, raising=False)
     from fxdash.narrative import release_calendar
     monkeypatch.setattr(release_calendar, 'attach', lambda *args, **kwargs: None)
     from fxdash.narrative import automation, public_delivery

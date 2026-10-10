@@ -22,8 +22,9 @@ def main(repo=None):
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("a", encoding="utf-8", buffering=1) as stream, redirect_stdout(stream), redirect_stderr(stream):
         try:
-            from fxdash.narrative.speech_settings import refresh_user_speech_environment
-            refresh_user_speech_environment()
+            from fxdash.scheduled_environment import refresh
+            observed = refresh('catchup')
+            print('scheduled_environment', observed['state'], flush=True)
             from fxdash.narrative import catchup as C, morning as M
             if not C.due(M.now_utc()):
                 status = R.record_task_status(repo/'outputs', 'catchup', 0, {'state':'idle'})

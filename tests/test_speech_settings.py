@@ -8,8 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from fxdash.narrative import speech_settings as P
+from fxdash import scheduled_environment as E
 
 read_registry = P._read_user_environment
+read_scheduled_registry = E._read_user_environment
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +70,7 @@ def test_user_environment_read_failure_disables_only_audio(monkeypatch):
 
 
 def test_registry_reader_queries_only_allowlisted_user_environment_values(monkeypatch):
+    monkeypatch.setattr(E, '_read_user_environment', read_scheduled_registry)
     calls = []
     class Handle:
         def __enter__(self): return self
@@ -102,7 +105,7 @@ def test_scheduled_entry_refreshes_settings_before_dispatch(tmp_path, monkeypatc
     monkeypatch.setattr(sys,'stdout',sys.stdout)
     monkeypatch.setattr(sys,'stderr',sys.stderr)
     calls=[]
-    monkeypatch.setattr(P,'refresh_user_speech_environment',lambda:calls.append('settings'))
+    monkeypatch.setattr(E,'refresh',lambda kind:(calls.append('settings'),{'state':'refreshed'})[1])
     if entry_name == 'run_catchup_task':
         monkeypatch.setattr(C,'due',lambda now:(calls.append('gate'),False)[1])
         assert entry.main() == 0

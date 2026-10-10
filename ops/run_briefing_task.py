@@ -24,8 +24,9 @@ def main(repo=None):
     with destination.open("a", encoding="utf-8", buffering=1) as stream, redirect_stdout(stream), redirect_stderr(stream):
         print(datetime.now(timezone.utc).isoformat(), "scheduled_entry_started", flush=True)
         try:
-            from fxdash.narrative.speech_settings import refresh_user_speech_environment
-            refresh_user_speech_environment()
+            from fxdash.scheduled_environment import refresh
+            observed = refresh('briefing')
+            print('scheduled_environment', observed['state'], flush=True)
             from fxdash.narrative.morning_dispatch import main as dispatch
             from fxdash.narrative import morning as M
             action = M.slot(M.now_utc())

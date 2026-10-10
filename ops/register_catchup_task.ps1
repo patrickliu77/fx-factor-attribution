@@ -5,6 +5,7 @@
     Runs two minutes after this user's login and every 15 minutes while available.
     Does not wake the computer. Python permits catch-up only after 09:05 New York
     on weekdays. Existing dated text is reused; generation is claimed once per day.
+    Eligible checks may run configured generation, audio, publishing and email.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param([string]$Python = "", [string]$TaskName = "fxdash-catchup")
@@ -36,7 +37,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, 'Register login and periodic catch-up che
         [System.IO.File]::WriteAllText((Join-Path $audit 'before.xml'), (Export-ScheduledTask -TaskName $TaskName), [System.Text.Encoding]::Unicode)
     }
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($loginTrigger,$periodic) `
-        -Settings $settings -Principal $principal -Description 'FX dated catch-up briefing after login, no wake, no audio' -Force | Out-Null
+        -Settings $settings -Principal $principal -Description 'FX dated catch-up briefing and configured delivery after login, no wake' -Force | Out-Null
     $installed = Get-ScheduledTask -TaskName $TaskName
     $xmlText = Export-ScheduledTask -TaskName $TaskName
     [System.IO.File]::WriteAllText((Join-Path $audit 'installed.xml'), $xmlText, [System.Text.Encoding]::Unicode)
