@@ -1,4 +1,4 @@
-// SPA: #/news, #/fx, #/attribution, plus #/fx/{PAIR} detail.
+// SPA: News, FX and Attribution, with pair research and methodology routes.
 // Attribution numbers all come from contract-derived values via /api; this layer
 // recomputes nothing (SPEC_web §6).
 //
@@ -36,6 +36,7 @@ const state = {
   quotes: null,
   ranges: {},
   openPair: null,
+  focusPair: null,
   openStory: null,
   openExplain: null,
   pairNewsViews: {},
@@ -138,6 +139,11 @@ function stampLabel(text) {
   return `${m[1]} ${m[2]}${m[3] ? " UTC" + (m[3] === "Z" ? "" : m[3]) : ""}`;
 }
 const label = (p) => PAIR_LABEL[p] || p;
+const currencyName = (pair) => {
+  const code = pair.slice(3), key = "currency." + code.toLowerCase();
+  const name = t(key);
+  return name === key ? code : name;
+};
 const fmtLevel = (v, d) => v == null ? "n/a"
   : Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtBp = (v) => v == null ? "n/a" : (v > 0 ? "+" : "") + Math.round(v);
@@ -150,7 +156,7 @@ const arrow = (d) => d > 0 ? "↑" : d < 0 ? "↓" : "→";
 function longDate(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(getLang() === "zh" ? "zh-CN" : "en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
   });
 }
@@ -166,6 +172,52 @@ function mount(el, option, key) {
   c.setOption(option);
   charts.set(key, c);
   return c;
+}
+
+function pageHeading({eyebrow, title, subtitle, meta = "", className = ""}) {
+  return `<header class="page-heading ${className}">
+    <div class="page-heading__copy"><p class="page-heading__eyebrow">${esc(eyebrow)}</p>
+      <h1 class="page">${esc(title)}</h1><p class="page-heading__subtitle">${esc(subtitle)}</p></div>
+    ${meta ? `<div class="page-heading__meta">${meta}</div>` : ""}
+  </header>`;
+}
+
+function marketStamp(date) {
+  return `<div class="page-heading__stamp"><span>${esc(t("page.data.through"))}</span>
+    ${date ? `<time datetime="${esc(date)}">${esc(longDate(date))}</time>` : `<span>${esc(t("page.data.unavailable"))}</span>`}</div>`;
+}
+
+// Research and methodology keep their module markup and binding hooks. Give
+// their existing headings the same workspace structure as the main routes.
+function decorateHeading(header, eyebrowText) {
+  if (!header) return;
+  const title = header.querySelector("h1"), subtitle = header.querySelector(".lede");
+  if (!title) return;
+  header.classList.add("page-heading");
+  title.classList.add("page");
+  subtitle?.classList.add("page-heading__subtitle");
+  let eyebrow = header.querySelector(".method__eyebrow");
+  if (!eyebrow) {
+    eyebrow = document.createElement("p");
+    eyebrow.textContent = eyebrowText;
+  }
+  eyebrow.classList.add("page-heading__eyebrow");
+  let copy = title.parentElement;
+  if (copy === header) {
+    copy = document.createElement("div");
+    header.prepend(copy);
+  }
+  copy.classList.add("page-heading__copy");
+  copy.prepend(eyebrow);
+  copy.append(title);
+  if (subtitle) copy.append(subtitle);
+  const metadata = [...header.children].filter(node => node !== copy);
+  if (metadata.length) {
+    const meta = document.createElement("div");
+    meta.className = "page-heading__meta";
+    meta.append(...metadata);
+    header.append(meta);
+  }
 }
 
 /* Transmission channels are derived from the event kind; no economics is invented out of thin air */
@@ -351,7 +403,7 @@ function applyTheme(theme) {
 function renderThemeButton() {
   const btn = document.getElementById("themebtn");
   const dark = getTheme() !== "light";
-  btn.textContent = dark ? "☀" : "☾";
+  btn.textContent = t(dark ? "theme.current.dark" : "theme.current.light");
   btn.title = dark ? t("theme.light") : t("theme.dark");
   btn.setAttribute("aria-label", btn.title);
   btn.onclick = () => { applyTheme(dark ? "light" : "dark"); renderThemeButton(); renderTape(); render(); };
@@ -362,8 +414,10 @@ function renderNav(route) {
   const nav = document.getElementById("nav");
   const links = [["#/news", t("nav.news")], ["#/fx", t("nav.fx")],
     ["#/attribution", t("nav.attribution")]];
+  const section = route.startsWith("/research/") || route.startsWith("/methodology")
+    ? "/attribution" : route;
   nav.innerHTML = links.map(([href, text]) => {
-    const active = route.startsWith(href.slice(1));
+    const active = section.startsWith(href.slice(1));
     return `<a href="${href}"${active ? ' aria-current="page"' : ""}>${esc(text)}</a>`;
   }).join("");
 
@@ -687,7 +741,9 @@ async function pageNews(view, isCurrent) {
     </button>`).join("");
 
   view.innerHTML = `
-    <div class="headrow news-header"><h1 class="page">${esc(t('news.page.title'))}</h1>${subscriptionHtml(news.subscription)}</div>
+    ${pageHeading({eyebrow: t("page.news.eyebrow"), title: t("news.page.title"),
+      subtitle: t("page.news.subtitle"), className: "headrow news-header",
+      meta: marketStamp(news.as_of) + subscriptionHtml(news.subscription)})}
     <div class="news">
       <section class="news__main">
         ${briefingBoardHtml(news.briefing, news.briefing_archive, build)}
@@ -803,7 +859,12 @@ async function pageNews(view, isCurrent) {
   // already expanded, Explain has to be rebound too
   bindExplainButtons(view, explainHtmlFor);
   view.querySelectorAll("[data-mini]").forEach((b) => {
-    b.onclick = () => { location.hash = "#/fx"; };
+    b.onclick = () => {
+      state.openPair = b.dataset.mini;
+      state.focusPair = b.dataset.mini;
+      state.openExplain = null;
+      location.hash = "#/fx";
+    };
   });
 
   const miniAsOf = view.querySelector("[data-mini-asof]");
@@ -928,12 +989,14 @@ function cardHtml(pair, row, counts, robust) {
   return `<div class="card" role="button" tabindex="0" data-card="${pair}"
     aria-expanded="${open}">
     <div class="card__head">
-      <div class="card__name">${esc(label(pair))}</div>
+      <div class="card__identity"><span class="currency-badge" aria-hidden="true">${esc(pair.slice(3))}</span>
+        <div><div class="card__name">${esc(label(pair))}</div><div class="card__currency">${esc(currencyName(pair))}</div></div></div>
       ${robustnessChips(robust)}
       ${residualFlag(row) ? `<span class="rchip rchip--residual">${esc(t("residual.large"))}</span>` : ""}
       ${row && row.provisional ? `<span class="tag">${esc(t("quote.provisional"))}</span>` : ""}
       <div class="card__news">${n ? `${n} ${esc(t("fx.stories"))}` : esc(t("fx.nostories"))}</div>
     </div>
+    <div class="card__quote-label">${esc(t("fx.quote.label", {currency: pair.slice(3)}))}</div>
     <div class="card__px">
       <div class="card__last">${q ? fmtLevel(q.last, q.digits) : "n/a"}</div>
       <div class="card__chg" style="color:${dirColor(row?.y || 0)}">${
@@ -942,8 +1005,18 @@ function cardHtml(pair, row, counts, robust) {
         q ? arrow(q.direction) : ""}</div>
     </div>
     <div class="card__basis">${esc(t("price.daily"))} ${q ? fmtPct(q.chg_pct) : "n/a"}</div>
-    ${leadingFactorsHtml(row?.contributions, 1e4)}
-    <div class="col gap12">
+    <div class="plot">
+      <div class="plot__main">
+        <div class="plot__box" data-chart="${pair}"></div>
+        <div class="plot__x" data-xaxis="${pair}"></div>
+      </div>
+      <div class="plot__axis" data-yaxis="${pair}"></div>
+    </div>
+    <div class="ranges" data-ranges="${pair}" role="group" aria-label="${esc(t("fx.price.range", {pair: label(pair)}))}">
+      <span class="range-label">${esc(t("fx.price.history"))}</span>${RANGES.map((r) =>
+      `<button type="button" data-r="${r}" aria-pressed="${r === range}">${
+        esc(t("range." + r))}</button>`).join("")}</div>
+    <div class="col gap12 card__attribution">
       <div class="meter">
         <i style="width:${(ms || 0) * 100}%;background:var(--sys)"></i>
         <i style="width:${(me || 0) * 100}%;background:var(--exo)"></i>
@@ -959,16 +1032,7 @@ function cardHtml(pair, row, counts, robust) {
         ${esc(t("fx.onmodel"))} ${esc(((state.meta && state.meta.default_model) || "ols").toUpperCase())} ${
           (state.meta && state.meta.default_window) || 126}</div>
     </div>
-    <div class="plot">
-      <div class="plot__main">
-        <div class="plot__box" data-chart="${pair}"></div>
-        <div class="plot__x" data-xaxis="${pair}"></div>
-      </div>
-      <div class="plot__axis" data-yaxis="${pair}"></div>
-    </div>
-    <div class="ranges" data-ranges="${pair}">${RANGES.map((r) =>
-      `<button type="button" data-r="${r}" aria-pressed="${r === range}">${
-        esc(t("range." + r))}</button>`).join("")}</div>
+    ${leadingFactorsHtml(row?.contributions, 1e4)}
     <a class="card__research" href="#/research/${pair}">${esc(t("research.open"))} ↗</a>
   </div>`;
 }
@@ -1019,6 +1083,32 @@ function helpGridHtml() {
   </div>`;
 }
 
+function pairRowAnchor(view, pair) {
+  const cards = [...view.querySelectorAll(".cards > [data-card]")];
+  const index = cards.findIndex(card => card.dataset.card === pair);
+  if (index < 0) return null;
+  // Layout coordinates ignore the reveal animation's visual translation.
+  const top = cards[index].offsetTop;
+  let end = index;
+  while (end + 1 < cards.length && Math.abs(cards[end + 1].offsetTop - top) < 1) end++;
+  return cards[end];
+}
+
+function repositionPairPanel() {
+  if (document.body.dataset.page !== "fx" || !state.openPair) return;
+  const view = document.getElementById("view"), panel = view.querySelector(".pairnews");
+  if (!panel) return;
+  const focused = panel.contains(document.activeElement) ? document.activeElement : null;
+  // Remove only the detail panel while measuring the current CSS grid. Its old
+  // position must not force a partial row after a viewport breakpoint changes.
+  panel.remove();
+  const anchor = pairRowAnchor(view, state.openPair);
+  if (anchor) {
+    anchor.after(panel);
+    focused?.focus({preventScroll: true});
+  }
+}
+
 async function pageFX(view, isCurrent) {
   // The FX page is pinned to the canonical basis OLS@126 (2026-09-02 user ruling:
   // the switches stay on Attribution only)
@@ -1043,19 +1133,11 @@ async function pageFX(view, isCurrent) {
   if (!isCurrent()) return;
 
   const robust = overview.robustness || {};
-  const grid = [];
-  pairs.forEach((p, i) => {
-    grid.push(cardHtml(p, byPair[p], counts, robust[p]));
-    const endOfRow = i % 2 === 1 || i === pairs.length - 1;
-    const rowHasOpen = state.openPair &&
-      (pairs[i] === state.openPair || (i % 2 === 1 && pairs[i - 1] === state.openPair));
-    if (endOfRow && rowHasOpen && feed) grid.push(pairNewsHtml(state.openPair, feed));
-  });
+  const grid = pairs.map(p => cardHtml(p, byPair[p], counts, robust[p]));
 
   view.innerHTML = `
-    <div class="headrow">
-      <div class="dateline">${esc(longDate(overview.as_of))}</div>
-    </div>
+    ${pageHeading({eyebrow: t("page.fx.eyebrow"), title: t("page.fx.title"), subtitle: t("page.fx.subtitle"),
+      meta: marketStamp(overview.as_of) + `<p class="page-heading__basis">${esc(t("page.fx.basis", {model: model.toUpperCase(), window: win}))}</p>`})}
     <div class="col gap32">
       <div class="read">
         <div class="read__head">
@@ -1091,12 +1173,13 @@ async function pageFX(view, isCurrent) {
     let f;
     try { f = await api(`/pairs/${pair}/news`); } catch (e) { f = { items: [] }; }
     if (!isCurrent() || request !== panelRequest || state.openPair !== pair) return;
-    const i = pairs.indexOf(pair);
-    const anchorPair = (i % 2 === 0 && i + 1 < pairs.length) ? pairs[i + 1] : pairs[i];
-    const anchor = view.querySelector(`[data-card="${anchorPair}"]`);
+    const anchor = pairRowAnchor(view, pair);
     if (!anchor) return;
     anchor.insertAdjacentHTML("afterend", pairNewsHtml(pair, f));
     bindPairPanel(pair);
+  }
+  if (state.openPair && feed) {
+    pairRowAnchor(view, state.openPair)?.insertAdjacentHTML("afterend", pairNewsHtml(state.openPair, feed));
   }
 
   view.querySelector("#helpbtn").onclick = () => {
@@ -1120,7 +1203,7 @@ async function pageFX(view, isCurrent) {
   view.querySelectorAll("[data-card]").forEach((c) => {
     c.onclick = (ev) => toggleCard(c, ev);
     c.onkeydown = (ev) => {
-      if (ev.target.closest("a")) return;
+      if (ev.target !== c) return;
       if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleCard(c, ev); }
     };
   });
@@ -1140,6 +1223,14 @@ async function pageFX(view, isCurrent) {
   // window or language switch), day analysis buttons have to be rebound too
   bindPairPanel(state.openPair);
   pairs.forEach(drawPrice);
+  const focusPair = state.focusPair;
+  state.focusPair = null;
+  if (focusPair) requestAnimationFrame(() => {
+    const card = view.querySelector(`[data-card="${focusPair}"]`);
+    if (!isCurrent() || !card?.isConnected || state.openPair !== focusPair) return;
+    card.focus({preventScroll: true});
+    card.scrollIntoView({block: "start"});
+  });
 }
 
 async function drawPrice(pair) {
@@ -1266,11 +1357,10 @@ async function pageAttribution(view, isCurrent) {
     ${g.rows.map(r=>`<a href="${esc(/^https?:\/\//i.test(r.url) ? r.url : '#')}" target="_blank" rel="noopener">${esc(r.title)}<small>${esc(r.source || '')} · ${(r.cited_pairs || []).map(p=>esc(label(p))).join(', ')} ↗</small></a>`).join('')}</details>`).join('');
 
   view.innerHTML = `<article class="attribution-page">
-    <div class="attr-intro">
-      <h1 class="page">${esc(t("attr.title"))}</h1>
-      <div class="dateline">${esc(t("attr.period", {
-        start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))} · ${esc(t("return.log"))} bp</div>
-    </div>
+    ${pageHeading({eyebrow: t("page.attribution.eyebrow"), title: t("attr.title"),
+      subtitle: t("page.attribution.subtitle"), className: "attr-intro",
+      meta: `<div class="dateline">${esc(t("attr.period", {
+        start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))} <span>${esc(t("return.log"))} bp</span></div>`})}
     <div class="col gap24">
       <div class="ctlrow"><span class="lbl">${esc(t("attr.horizon"))}</span>
         <div class="ctl" id="periodctl">${[1,5,21].map(d => `<button type="button" data-days="${d}" aria-pressed="${state.period === d}">${esc(t("period."+d))}</button>`).join("")}</div>
@@ -1336,6 +1426,7 @@ async function pageResearch(view, pair, isCurrent) {
   ]);
   if (!isCurrent()) return;
   view.innerHTML = researchHtml(data, label(pair), controls(), comparison);
+  decorateHeading(view.querySelector(".research > .headrow"), t("page.research.eyebrow"));
   bindControls(view);
   if (!data.dates.length) return;
   const draw = () => {
@@ -1373,6 +1464,7 @@ function ensureMathJax() {
 
 async function pageMethodology(view, isCurrent) {
   view.innerHTML = methodologyHtml();
+  decorateHeading(view.querySelector(".method__intro"));
   try {
     await ensureMathJax();
     if (!isCurrent()) return;
@@ -1392,10 +1484,18 @@ async function render() {
   const view = document.getElementById("view");
   view.querySelectorAll('audio').forEach(player=>player.pause());
   const route = (location.hash || "#/fx").slice(1);
+  const page = route.startsWith("/news") ? "news" : route.startsWith("/attribution") ? "attribution"
+    : route.startsWith("/research/") ? "research" : route.startsWith("/methodology") ? "methodology" : "fx";
+  document.body.dataset.page = page;
+  const pageTitle = page === "fx" ? t("page.fx.title") : page === "news" ? t("news.page.title")
+    : page === "attribution" ? t("attr.title") : page === "methodology" ? t("page.methodology.title") : label(route.split("/")[2]);
+  document.title = `${pageTitle} | FX Dashboard`;
   disposeCharts();
   renderNav(route);
   renderFooter();
-  view.innerHTML = `<p class="empty">${esc(t("loading"))}</p>`;
+  view.innerHTML = `<div class="empty loading-view" role="status" aria-busy="true">
+    <p class="loading-view__label">${esc(t("loading"))}</p>
+    <div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div></div>`;
   await renderRuntime();
   if (!isCurrent()) return;
   try {
@@ -1448,7 +1548,7 @@ async function renderRuntime() {
 }
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => charts.forEach((c) => c.resize()), 140);
+  resizeTimer = setTimeout(() => { repositionPairPanel(); charts.forEach((c) => c.resize()); }, 140);
 });
 window.addEventListener("hashchange", render);
 

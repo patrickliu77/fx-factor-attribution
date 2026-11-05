@@ -40,8 +40,8 @@ try {
     })));
     for (const figure of bounds) {
       assert.ok(figure.title && figure.desc);
-      assert.ok(figure.font.includes('Outfit'));
-      assert.ok(figure.labelFont.includes('IBM Plex Mono'));
+      assert.ok(figure.font.includes('Manrope'));
+      assert.ok(figure.labelFont.includes('Geist Mono'));
       assert.deepEqual(figure.overflow,[],JSON.stringify({lang,width,figure}));
     }
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

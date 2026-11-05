@@ -3,31 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FX Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0e1a'/%3E%3Crect x='5' y='19' width='5' height='8' fill='%238b6cff'/%3E%3Crect x='13' y='12' width='5' height='15' fill='%233b9eff'/%3E%3Crect x='21' y='6' width='5' height='21' fill='%23c8f542'/%3E%3C/svg%3E">
+<title>FX Dashboard | Currency research</title>
+<meta name="description" content="A research workspace for six dollar currency pairs. Explore saved market moves, factor attribution, and source linked daily briefings.">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark light">
+<meta property="og:title" content="FX Dashboard | Currency research">
+<meta property="og:description" content="Six currency pairs. The factors behind the move. A daily research workspace with saved, source linked briefings.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23181818'/%3E%3Cpath d='M10 28V20M20 28V12M30 28V17' fill='none' stroke='%234cd39a' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="workspace.css">
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("fxdash.theme")||"dark")}catch(e){}</script>
 </head>
 <body>
+<a class="skip-link" href="#view">Skip to content / 跳至内容</a>
 <div class="top">
-  <div class="tape" id="tape" hidden></div>
   <header class="masthead">
-    <a class="wordmark" href="#/fx"><span>FX</span> Dashboard</a>
-    <nav class="nav" id="nav"></nav>
-    <div class="session" id="session" hidden></div>
-    <a class="pulse" id="pulse" href="#/news" hidden></a>
-    <a class="pulse" id="built" href="#/news" hidden></a>
+    <a class="wordmark" href="#/fx" aria-label="FX Dashboard">
+      <span class="wordmark__symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 24V16M16 24V7M25 24V12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
+      <span class="wordmark__name">FX<span class="wordmark__divider">/</span>Dashboard</span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Main navigation"></nav>
     <div class="masthead__right">
-      <div class="seg" id="langseg"></div>
+      <div class="seg" id="langseg" role="group" aria-label="Language"></div>
       <button class="iconbtn" id="themebtn" type="button"></button>
     </div>
   </header>
+  <div class="workspace-status">
+    <div class="session" id="session" hidden></div>
+    <div class="workspace-status__items">
+      <a class="pulse" id="pulse" href="#/news" hidden></a>
+      <a class="pulse" id="built" href="#/news" hidden></a>
+    </div>
+  </div>
+  <div class="tape" id="tape" hidden></div>
 </div>
 <aside id="runtime-status" class="runtime-status" aria-label="Calculation status" hidden></aside>
-<main id="view"></main>
+<main id="view" tabindex="-1"></main>
 <footer class="foot" id="foot"></footer>
 <script src="vendor/echarts.min.js"></script>
 <script type="module" src="app.js"></script>
+<script type="module" src="workspace.js"></script>
 </body>
 </html>

@@ -19,10 +19,10 @@ def test_website_fonts_are_local_and_licensed():
     assert "fonts.googleapis.com" not in html
     assert "fonts.gstatic.com" not in html
     fonts = re.findall(r'url\("([^"]+)"\)', css)
-    assert len(fonts) == 4
+    assert len(fonts) == len(set(fonts)) == 6
     for font in fonts:
         assert (STATIC_DIR / font).read_bytes().startswith(b"wOF2")
-    for family in ("Outfit", "IBM-Plex-Mono"):
+    for family in ("Manrope", "Geist-Mono", "Outfit", "IBM-Plex-Mono"):
         license_text = (STATIC_DIR / "fonts" / f"OFL-{family}.txt").read_text(encoding="utf-8")
         assert "SIL OPEN FONT LICENSE" in license_text
 
@@ -36,7 +36,11 @@ def test_standalone_figures_embed_the_website_fonts_and_fallbacks(name, lang):
     styles = "\n".join(node.text or "" for node in root.findall("svg:style", ns))
     assert root.find("svg:title", ns).text
     assert root.find("svg:desc", ns).text
-    assert "SIL OPEN FONT LICENSE" in root.find("svg:metadata", ns).text
+    metadata = root.find("svg:metadata", ns).text
+    for family in ("Manrope", "Geist-Mono", "Outfit", "IBM-Plex-Mono"):
+        license_text = (STATIC_DIR / "fonts" / f"OFL-{family}.txt").read_text(encoding="utf-8")
+        # SVG export removes trailing spaces from every line, including notices.
+        assert "\n".join(line.rstrip() for line in license_text.splitlines()) in metadata
     assert not root.findall(".//svg:script", ns)
     assert "@import" not in styles
     encoded = re.findall(r'data:font/woff2;base64,([A-Za-z0-9+/=]+)', styles)

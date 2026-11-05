@@ -1,5 +1,21 @@
-/* Local copies of the site's Google Fonts Latin faces. Licenses: fonts/OFL-*.txt.
-   Other scripts and missing mathematical glyphs use the shared system fallbacks. */
+/* Local Google Fonts Latin faces. Manrope leads the interface; Geist Mono is
+   reserved for numeric and chart UI. Licenses and sources: fonts/README.md.
+   Historical reports retain Outfit and IBM Plex Mono below. Other scripts and
+   missing mathematical glyphs use the shared system fallbacks. */
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url("fonts/manrope-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("fonts/geist-mono-latin.woff2") format("woff2");
+}
 @font-face {
   font-family: "Outfit";
   font-style: normal;

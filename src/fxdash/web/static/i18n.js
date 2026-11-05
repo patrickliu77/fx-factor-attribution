@@ -1,5 +1,5 @@
 // Bilingual dictionary: English is primary, Chinese is a toggle (SPEC_web §3).
-// Numbers and dates always use the en-US format and do not follow the language.
+// Numbers use en-US formatting; prose calendar dates follow the selected language.
 // Copy discipline: no dashes anywhere on the site, and no "·"; where a pause is
 // needed use a comma, a colon or parentheses.
 // Evidence wording discipline (2026-09-02 ruling): a story is only contemporaneous
@@ -10,10 +10,34 @@ export const DICT = {
   "nav.fx": { en: "FX", zh: "汇率" },
   "nav.attribution": { en: "Attribution", zh: "归因" },
 
-  "ctl.model": { en: "MODEL", zh: "模型" },
-  "ctl.window": { en: "TRAINING", zh: "训练窗口" },
+  "ctl.model": { en: "Model", zh: "模型" },
+  "ctl.window": { en: "Training window", zh: "训练窗口" },
   "theme.light": { en: "Switch to light", zh: "切换到浅色" },
   "theme.dark": { en: "Switch to dark", zh: "切换到深色" },
+  "theme.current.light": { en: "Light", zh: "浅色" },
+  "theme.current.dark": { en: "Dark", zh: "深色" },
+
+  "page.fx.eyebrow": { en: "Currency research", zh: "货币研究" },
+  "page.fx.title": { en: "FX market overview", zh: "汇率市场概览" },
+  "page.fx.subtitle": { en: "Daily quotes, factor contributions and residuals for USD pairs.", zh: "查看美元货币对的日频报价、因子贡献与残差。" },
+  "page.news.eyebrow": { en: "Research desk", zh: "研究工作台" },
+  "page.news.subtitle": { en: "Saved briefings, dated headlines and their sources.", zh: "阅读已保存简报、注明日期的头条与报道来源。" },
+  "page.attribution.eyebrow": { en: "Factor attribution", zh: "因子归因" },
+  "page.attribution.subtitle": { en: "Compare signed factor contributions across pairs, models and return periods.", zh: "对比货币对、模型与收益区间下的因子贡献。" },
+  "page.research.eyebrow": { en: "Pair research", zh: "货币对研究" },
+  "page.methodology.title": { en: "Methodology", zh: "方法论" },
+  "page.data.through": { en: "Attribution as of", zh: "归因数据截至" },
+  "page.data.unavailable": { en: "Date unavailable", zh: "日期暂不可用" },
+  "page.fx.basis": { en: "{model} / {window} training observations", zh: "{model} / {window} 个训练观测" },
+  "currency.eur": { en: "Euro", zh: "欧元" },
+  "currency.jpy": { en: "Japanese yen", zh: "日元" },
+  "currency.cad": { en: "Canadian dollar", zh: "加元" },
+  "currency.nok": { en: "Norwegian krone", zh: "挪威克朗" },
+  "currency.aud": { en: "Australian dollar", zh: "澳元" },
+  "currency.mxn": { en: "Mexican peso", zh: "墨西哥比索" },
+  "fx.quote.label": { en: "Quote, {currency} per USD", zh: "报价，每美元对应 {currency}" },
+  "fx.price.history": { en: "Price history", zh: "价格历史" },
+  "fx.price.range": { en: "Price history range for {pair}", zh: "{pair} 价格历史区间" },
 
   "tape.session": { en: "SESSION", zh: "交易日" },
   "news.relatedsources": { en: "More reporting on this event", zh: "同一事件的其他报道" },

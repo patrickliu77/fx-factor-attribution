@@ -5,34 +5,33 @@
 // same function, so the two align exactly. The design requires that, and it was the
 // root cause of the earlier misalignment (ECharts picked its own scale and the HTML
 // side had no way of knowing what it had picked).
-/* global echarts */
 
 export function tokens() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n, f) => (cs.getPropertyValue(n) || "").trim() || f;
   return {
-    mono: v("--mono", "IBM Plex Mono, Consolas, Microsoft YaHei, PingFang SC, ui-monospace, monospace"),
-    ink: v("--ink", "#0b0e1a"),
-    panel: v("--panel", "#12152a"),
-    raise: v("--raise", "#171b32"),
-    text: v("--text", "#e6e8f2"),
-    mute: v("--mute", "#8a8fa8"),
-    dim: v("--dim", "#5c6079"),
-    accent: v("--accent", "#a394ff"),
+    mono: v("--mono", "Geist Mono, Consolas, Microsoft YaHei, PingFang SC, ui-monospace, monospace"),
+    ink: v("--ink", "#000000"),
+    panel: v("--panel", "#181818"),
+    raise: v("--raise", "#1f1f1f"),
+    text: v("--text", "#f5f5f5"),
+    mute: v("--mute", "#a3a3a3"),
+    dim: v("--dim", "#737373"),
+    accent: v("--accent", "#4cd39a"),
     sys: v("--sys", "#8b6cff"),
     exo: v("--exo", "#3b9eff"),
     res: v("--res", "#c8f542"),
     up: v("--up", "#4cd39a"),
     down: v("--down", "#f0647a"),
-    grid: v("--chart-grid", "rgba(255,255,255,.06)"),
-    axis: v("--chart-axis", "#5c6079"),
+    grid: v("--chart-grid", "rgba(255,255,255,.10)"),
+    axis: v("--chart-axis", "#a3a3a3"),
     line: v("--line-3", "rgba(255,255,255,.14)"),
   };
 }
 
 export function bucketColor(key) {
   const cs = getComputedStyle(document.documentElement);
-  return (cs.getPropertyValue("--b-" + key) || "").trim() || "#8a8fa8";
+  return (cs.getPropertyValue("--b-" + key) || "").trim() || "#a3a3a3";
 }
 
 function alpha(color, a) {
@@ -94,15 +93,18 @@ export function priceOption(data, scale) {
     grid: { left: 0, right: 0, top: 0, bottom: 0, containLabel: false },
     tooltip: {
       trigger: "axis",
+      confine: true,
       backgroundColor: C.raise,
       borderColor: C.line,
       borderWidth: 1,
-      padding: [8, 11],
-      textStyle: { color: C.text, fontSize: 12, fontFamily: C.mono },
+      borderRadius: 8,
+      padding: [8, 12],
+      extraCssText: "box-shadow:none;",
+      textStyle: { color: C.text, fontSize: 12, lineHeight: 16, fontWeight: 500, fontFamily: C.mono },
       formatter: (ps) => {
         const p = ps[0];
         const val = p.data == null ? "n/a" : Number(p.data).toFixed(digits + 1);
-        return `<span style="color:${C.mute}">${p.axisValue}</span>  <b>${val}</b>`;
+        return `<span style="color:${C.mute}">${p.axisValue}</span>  <b style="font-weight:600">${val}</b>`;
       },
     },
     xAxis: {
@@ -121,12 +123,7 @@ export function priceOption(data, scale) {
     series: [{
       type: "line", data: data.values, showSymbol: false, smooth: false,
       lineStyle: { color, width: 1.8 },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: alpha(color, 0.26) },
-          { offset: 1, color: alpha(color, 0) },
-        ]),
-      },
+      areaStyle: { color: alpha(color, 0.08) },
       markLine: {
         silent: true, symbol: "none",
         data: [{ yAxis: data.first }],
@@ -168,12 +165,7 @@ export function sparkOption(data) {
     series: [{
       id: "daily-history", type: "line", data: values, showSymbol: false, smooth: false, silent: true,
       lineStyle: { color: C.mute, width: 1.5 },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: alpha(C.mute, 0.10) },
-          { offset: 1, color: alpha(C.mute, 0) },
-        ]),
-      },
+      areaStyle: { color: alpha(C.mute, 0.04) },
     }, {
       id: "latest-daily-change", type: "line", showSymbol: false, smooth: false, silent: true,
       data: values.map((value, i) => i >= values.length - 2 ? value : null),
