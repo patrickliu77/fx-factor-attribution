@@ -23,7 +23,7 @@ const stacks = ['display', 'mono'].map(name => {
   if (!value) throw new Error(`Missing website font stack: --${name}`);
   return `--${name}: ${value};`;
 }).join(' ');
-const licenses = await Promise.all(['Manrope', 'Geist-Mono', 'Outfit', 'IBM-Plex-Mono'].map(async name =>
+const licenses = await Promise.all(['Outfit', 'IBM-Plex-Mono'].map(async name =>
   `${name}\n${await readFile(new URL(`fonts/OFL-${name}.txt`, assets), 'utf8')}`));
 const embedded = `<metadata>${escape(licenses.join('\n\n'))}</metadata>\n    <style>${fonts}\n.method-diagram { ${stacks} }</style>`;
 

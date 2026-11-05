@@ -39,7 +39,7 @@ try {
         dollar:options[1].series[0].data.at(-1), carry:options[1].series[1].data.at(-1)};
     });
     assert.ok(info.scroll<=width+1, JSON.stringify(info));
-    assert.ok(info.font.includes('Manrope') && info.numberFont.includes('Geist Mono'));
+    assert.ok(info.font.includes('Outfit') && info.numberFont.includes('IBM Plex Mono'));
     assert.equal(info.dates,252);
     assert.equal(info.labels[0],(info.variance*100).toFixed(1)+'%');
     assert.equal(info.labels[1],(info.dollar*100).toFixed(1)+'%');

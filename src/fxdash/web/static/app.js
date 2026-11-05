@@ -47,6 +47,7 @@ const state = {
 };
 const charts = new Map();
 const priceRequests = new Map();
+const priceDates = new Map();
 let renderGeneration = 0;
 let runtimeRequest = 0;
 let pulseRequest = 0;
@@ -139,11 +140,6 @@ function stampLabel(text) {
   return `${m[1]} ${m[2]}${m[3] ? " UTC" + (m[3] === "Z" ? "" : m[3]) : ""}`;
 }
 const label = (p) => PAIR_LABEL[p] || p;
-const currencyName = (pair) => {
-  const code = pair.slice(3), key = "currency." + code.toLowerCase();
-  const name = t(key);
-  return name === key ? code : name;
-};
 const fmtLevel = (v, d) => v == null ? "n/a"
   : Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtBp = (v) => v == null ? "n/a" : (v > 0 ? "+" : "") + Math.round(v);
@@ -165,7 +161,7 @@ const mean = (xs) => {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
 
-function disposeCharts() { charts.forEach((c) => c.dispose()); charts.clear(); }
+function disposeCharts() { charts.forEach((c) => c.dispose()); charts.clear(); priceDates.clear(); }
 function mount(el, option, key) {
   if (!el) return null;
   const c = echarts.init(el, null, { renderer: "canvas" });
@@ -174,10 +170,9 @@ function mount(el, option, key) {
   return c;
 }
 
-function pageHeading({eyebrow, title, subtitle, meta = "", className = ""}) {
+function pageHeading({title, meta = "", className = ""}) {
   return `<header class="page-heading ${className}">
-    <div class="page-heading__copy"><p class="page-heading__eyebrow">${esc(eyebrow)}</p>
-      <h1 class="page">${esc(title)}</h1><p class="page-heading__subtitle">${esc(subtitle)}</p></div>
+    <div class="page-heading__copy"><h1 class="page">${esc(title)}</h1></div>
     ${meta ? `<div class="page-heading__meta">${meta}</div>` : ""}
   </header>`;
 }
@@ -185,39 +180,6 @@ function pageHeading({eyebrow, title, subtitle, meta = "", className = ""}) {
 function marketStamp(date) {
   return `<div class="page-heading__stamp"><span>${esc(t("page.data.through"))}</span>
     ${date ? `<time datetime="${esc(date)}">${esc(longDate(date))}</time>` : `<span>${esc(t("page.data.unavailable"))}</span>`}</div>`;
-}
-
-// Research and methodology keep their module markup and binding hooks. Give
-// their existing headings the same workspace structure as the main routes.
-function decorateHeading(header, eyebrowText) {
-  if (!header) return;
-  const title = header.querySelector("h1"), subtitle = header.querySelector(".lede");
-  if (!title) return;
-  header.classList.add("page-heading");
-  title.classList.add("page");
-  subtitle?.classList.add("page-heading__subtitle");
-  let eyebrow = header.querySelector(".method__eyebrow");
-  if (!eyebrow) {
-    eyebrow = document.createElement("p");
-    eyebrow.textContent = eyebrowText;
-  }
-  eyebrow.classList.add("page-heading__eyebrow");
-  let copy = title.parentElement;
-  if (copy === header) {
-    copy = document.createElement("div");
-    header.prepend(copy);
-  }
-  copy.classList.add("page-heading__copy");
-  copy.prepend(eyebrow);
-  copy.append(title);
-  if (subtitle) copy.append(subtitle);
-  const metadata = [...header.children].filter(node => node !== copy);
-  if (metadata.length) {
-    const meta = document.createElement("div");
-    meta.className = "page-heading__meta";
-    meta.append(...metadata);
-    header.append(meta);
-  }
 }
 
 /* Transmission channels are derived from the event kind; no economics is invented out of thin air */
@@ -403,7 +365,7 @@ function applyTheme(theme) {
 function renderThemeButton() {
   const btn = document.getElementById("themebtn");
   const dark = getTheme() !== "light";
-  btn.textContent = t(dark ? "theme.current.dark" : "theme.current.light");
+  btn.textContent = dark ? "☀" : "☾";
   btn.title = dark ? t("theme.light") : t("theme.dark");
   btn.setAttribute("aria-label", btn.title);
   btn.onclick = () => { applyTheme(dark ? "light" : "dark"); renderThemeButton(); renderTape(); render(); };
@@ -741,8 +703,7 @@ async function pageNews(view, isCurrent) {
     </button>`).join("");
 
   view.innerHTML = `
-    ${pageHeading({eyebrow: t("page.news.eyebrow"), title: t("news.page.title"),
-      subtitle: t("page.news.subtitle"), className: "headrow news-header",
+    ${pageHeading({title: t("news.page.title"), className: "headrow news-header",
       meta: marketStamp(news.as_of) + subscriptionHtml(news.subscription)})}
     <div class="news">
       <section class="news__main">
@@ -989,14 +950,12 @@ function cardHtml(pair, row, counts, robust) {
   return `<div class="card" role="button" tabindex="0" data-card="${pair}"
     aria-expanded="${open}">
     <div class="card__head">
-      <div class="card__identity"><span class="currency-badge" aria-hidden="true">${esc(pair.slice(3))}</span>
-        <div><div class="card__name">${esc(label(pair))}</div><div class="card__currency">${esc(currencyName(pair))}</div></div></div>
+      <div class="card__name">${esc(label(pair))}</div>
       ${robustnessChips(robust)}
       ${residualFlag(row) ? `<span class="rchip rchip--residual">${esc(t("residual.large"))}</span>` : ""}
       ${row && row.provisional ? `<span class="tag">${esc(t("quote.provisional"))}</span>` : ""}
-      <div class="card__news">${n ? `${n} ${esc(t("fx.stories"))}` : esc(t("fx.nostories"))}</div>
+      ${n ? `<div class="card__news">${n} ${esc(t("fx.stories"))}</div>` : ""}
     </div>
-    <div class="card__quote-label">${esc(t("fx.quote.label", {currency: pair.slice(3)}))}</div>
     <div class="card__px">
       <div class="card__last">${q ? fmtLevel(q.last, q.digits) : "n/a"}</div>
       <div class="card__chg" style="color:${dirColor(row?.y || 0)}">${
@@ -1013,7 +972,7 @@ function cardHtml(pair, row, counts, robust) {
       <div class="plot__axis" data-yaxis="${pair}"></div>
     </div>
     <div class="ranges" data-ranges="${pair}" role="group" aria-label="${esc(t("fx.price.range", {pair: label(pair)}))}">
-      <span class="range-label">${esc(t("fx.price.history"))}</span>${RANGES.map((r) =>
+      ${RANGES.map((r) =>
       `<button type="button" data-r="${r}" aria-pressed="${r === range}">${
         esc(t("range." + r))}</button>`).join("")}</div>
     <div class="col gap12 card__attribution">
@@ -1027,10 +986,7 @@ function cardHtml(pair, row, counts, robust) {
         <div><i style="background:var(--exo)"></i>${esc(t("exo"))} <b>${fmtBp1(row?.exogenous == null ? null : row.exogenous * 1e4)} bp</b> <small>(${fmtShare(me)})</small></div>
         <div><i style="background:var(--res)"></i>${esc(t("res"))} <b>${fmtBp1(row?.residual == null ? null : row.residual * 1e4)} bp</b> <small>(${fmtShare(mr)})</small></div>
       </div>
-      <div class="card__basis">${esc(t("fx.absolute"))}</div>
-      <div class="hint nowrap">${esc(t("fx.fit"))} ${row && row.r2_full != null ? row.r2_full.toFixed(3) : "n/a"}
-        ${esc(t("fx.onmodel"))} ${esc(((state.meta && state.meta.default_model) || "ols").toUpperCase())} ${
-          (state.meta && state.meta.default_window) || 126}</div>
+      <div class="hint nowrap card__fit">${esc(t("fx.fit"))} ${row && row.r2_full != null ? row.r2_full.toFixed(3) : "n/a"}</div>
     </div>
     ${leadingFactorsHtml(row?.contributions, 1e4)}
     <a class="card__research" href="#/research/${pair}">${esc(t("research.open"))} ↗</a>
@@ -1065,19 +1021,20 @@ function pairNewsHtml(pair, feed) {
 
 function helpGridHtml() {
   return `<div class="helpgrid">
-    <div style="border-top:2px solid var(--sys)">
+    <p class="stack-note helpgrid__note">${esc(t("fx.absolute"))}</p>
+    <div>
       <div class="k" style="color:var(--sys)">${esc(t("sys")).toUpperCase()}</div>
       <div class="t">${esc(t("legend.sys"))}</div></div>
-    <div style="border-top:2px solid var(--exo)">
+    <div>
       <div class="k" style="color:var(--exo)">${esc(t("exo")).toUpperCase()}</div>
       <div class="t">${esc(t("legend.exo"))}</div></div>
-    <div style="border-top:2px solid var(--res)">
+    <div>
       <div class="k" style="color:var(--res)">${esc(t("res")).toUpperCase()}</div>
       <div class="t">${esc(t("legend.res"))}</div></div>
-    <div style="border-top:2px solid var(--b-rates)">
+    <div>
       <div class="k" style="color:var(--b-rates)">${esc(t("ctl.window"))} 63 / 126 / 252</div>
       <div class="t">${esc(t("legend.window"))}</div></div>
-    <div style="border-top:2px solid var(--b-risk)">
+    <div>
       <div class="k" style="color:var(--b-risk)">${esc(t("ctl.model"))} OLS / RIDGE / LASSO</div>
       <div class="t">${esc(t("legend.model"))}</div></div>
   </div>`;
@@ -1136,7 +1093,7 @@ async function pageFX(view, isCurrent) {
   const grid = pairs.map(p => cardHtml(p, byPair[p], counts, robust[p]));
 
   view.innerHTML = `
-    ${pageHeading({eyebrow: t("page.fx.eyebrow"), title: t("page.fx.title"), subtitle: t("page.fx.subtitle"),
+    ${pageHeading({title: t("page.fx.title"),
       meta: marketStamp(overview.as_of) + `<p class="page-heading__basis">${esc(t("page.fx.basis", {model: model.toUpperCase(), window: win}))}</p>`})}
     <div class="col gap32">
       <div class="read">
@@ -1233,6 +1190,15 @@ async function pageFX(view, isCurrent) {
   });
 }
 
+function renderPriceLabels(pair) {
+  const box = document.querySelector(`[data-chart="${pair}"]`);
+  const axis = document.querySelector(`[data-xaxis="${pair}"]`);
+  const dates = priceDates.get(pair);
+  if (!box || !axis || !dates) return;
+  const count = Math.max(2, Math.min(6, Math.floor(box.clientWidth / 80) + 1));
+  axis.innerHTML = CH.xLabels(dates, count).map(value => `<span>${esc(value)}</span>`).join("");
+}
+
 async function drawPrice(pair) {
   const box = document.querySelector(`[data-chart="${pair}"]`);
   const yaxis = document.querySelector(`[data-yaxis="${pair}"]`);
@@ -1250,6 +1216,7 @@ async function drawPrice(pair) {
 
   const old = charts.get("px:" + pair);
   if (old) { old.dispose(); charts.delete("px:" + pair); }
+  priceDates.delete(pair);
   box.innerHTML = "";
   if (yaxis) yaxis.innerHTML = "";
   if (xaxis) xaxis.innerHTML = "";
@@ -1263,7 +1230,8 @@ async function drawPrice(pair) {
   // Ticks and the plot's min/max come from the same function, so they align exactly
   const scale = CH.priceScale(data.values);
   if (yaxis) yaxis.innerHTML = scale.ticks.map((v) => `<span>${esc(v)}</span>`).join("");
-  if (xaxis) xaxis.innerHTML = CH.xLabels(data.dates).map((v) => `<span>${esc(v)}</span>`).join("");
+  priceDates.set(pair, data.dates);
+  renderPriceLabels(pair);
   mount(box, CH.priceOption(data, scale), "px:" + pair);
 }
 
@@ -1357,8 +1325,7 @@ async function pageAttribution(view, isCurrent) {
     ${g.rows.map(r=>`<a href="${esc(/^https?:\/\//i.test(r.url) ? r.url : '#')}" target="_blank" rel="noopener">${esc(r.title)}<small>${esc(r.source || '')} · ${(r.cited_pairs || []).map(p=>esc(label(p))).join(', ')} ↗</small></a>`).join('')}</details>`).join('');
 
   view.innerHTML = `<article class="attribution-page">
-    ${pageHeading({eyebrow: t("page.attribution.eyebrow"), title: t("attr.title"),
-      subtitle: t("page.attribution.subtitle"), className: "attr-intro",
+    ${pageHeading({title: t("attr.title"), className: "attr-intro",
       meta: `<div class="dateline">${esc(t("attr.period", {
         start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))} <span>${esc(t("return.log"))} bp</span></div>`})}
     <div class="col gap24">
@@ -1426,7 +1393,6 @@ async function pageResearch(view, pair, isCurrent) {
   ]);
   if (!isCurrent()) return;
   view.innerHTML = researchHtml(data, label(pair), controls(), comparison);
-  decorateHeading(view.querySelector(".research > .headrow"), t("page.research.eyebrow"));
   bindControls(view);
   if (!data.dates.length) return;
   const draw = () => {
@@ -1464,7 +1430,6 @@ function ensureMathJax() {
 
 async function pageMethodology(view, isCurrent) {
   view.innerHTML = methodologyHtml();
-  decorateHeading(view.querySelector(".method__intro"));
   try {
     await ensureMathJax();
     if (!isCurrent()) return;
@@ -1548,7 +1513,11 @@ async function renderRuntime() {
 }
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { repositionPairPanel(); charts.forEach((c) => c.resize()); }, 140);
+  resizeTimer = setTimeout(() => {
+    repositionPairPanel();
+    charts.forEach((c) => c.resize());
+    for (const pair of priceDates.keys()) renderPriceLabels(pair);
+  }, 140);
 });
 window.addEventListener("hashchange", render);
 
