@@ -34,6 +34,7 @@ const state = {
   period: 5,
   meta: null,
   quotes: null,
+  pendingQuotes: null,
   ranges: {},
   openPair: null,
   focusPair: null,
@@ -52,6 +53,9 @@ let renderGeneration = 0;
 let runtimeRequest = 0;
 let pulseRequest = 0;
 let tapeRequest = 0;
+let shownContext = null;
+let viewFeedback = null;
+let scrollAnchorStyle = null;
 
 /* ------------------------------------------------------------------ utils */
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
@@ -103,9 +107,14 @@ function staticPath(path) {
 async function api(path) {
   await detectBuild();
   const url = build.mode === "static" ? staticPath(path) : "api" + path;
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(res.status + " " + path);
-  return res.json();
+  let res;
+  try { res = await fetch(url, { headers: { accept: "application/json" } }); }
+  catch { throw Object.assign(new Error("request_failed"), {retryable: true}); }
+  if (!res.ok) throw Object.assign(new Error("response_failed"), {
+    status: res.status, retryable: res.status >= 500 || [408, 429].includes(res.status),
+  });
+  try { return await res.json(); }
+  catch { throw Object.assign(new Error("response_unreadable"), {retryable: true}); }
 }
 
 // Ages are computed here, in the browser, from timestamps, never read from a file.
@@ -143,7 +152,7 @@ const label = (p) => PAIR_LABEL[p] || p;
 const fmtLevel = (v, d) => v == null ? "n/a"
   : Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtBp = (v) => v == null ? "n/a" : (v > 0 ? "+" : "") + Math.round(v);
-const fmtBp1 = (v) => v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(1);
+const fmtBp1 = (v) => !Number.isFinite(v) ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(1);
 const fmtPct = (v) => v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(2) + "%";
 const fmtShare = (v) => v == null ? "n/a" : Math.round(v * 100) + "%";
 const dirColor = (d) => d > 0 ? "var(--up)" : d < 0 ? "var(--down)" : "var(--mute)";
@@ -168,6 +177,122 @@ function mount(el, option, key) {
   c.setOption(option);
   charts.set(key, c);
   return c;
+}
+
+function focusedControl() {
+  const element = document.activeElement;
+  if (element?.matches('#beta-factor')) return {kind: "factor"};
+  if (element?.matches('[data-card]')) return {kind: "card", value: element.dataset.card};
+  if (element?.matches('a[href]')) return {kind: "link", value: element.getAttribute('href')};
+  if (element?.matches('[data-lang]')) return {kind: "lang", value: element.dataset.lang};
+  if (element?.matches('#periodctl button')) return {kind: "period", value: element.dataset.days};
+  const range = element?.closest('[data-ranges]');
+  if (range && element.matches('button[data-r]')) return {kind: "range", pair: range.dataset.ranges, value: element.dataset.r};
+  const group = element?.closest('[data-ctl]');
+  return group && element.matches('button[data-v]') ? {kind: group.dataset.ctl, value: element.dataset.v} : null;
+}
+
+function holdScrollAnchor() {
+  if (scrollAnchorStyle !== null) return;
+  scrollAnchorStyle = document.documentElement.style.overflowAnchor;
+  document.documentElement.style.overflowAnchor = "none";
+}
+
+function releaseScrollAnchor(isCurrent) {
+  requestAnimationFrame(() => {
+    if (!isCurrent() || document.getElementById("view")?.hasAttribute("aria-busy") || scrollAnchorStyle === null) return;
+    // Resolve the feedback's layout change while native anchoring is disabled.
+    document.documentElement.getBoundingClientRect();
+    document.documentElement.style.overflowAnchor = scrollAnchorStyle;
+    scrollAnchorStyle = null;
+  });
+}
+
+function restoreControl(context, isCurrent) {
+  if (!context.restore) return;
+  requestAnimationFrame(() => {
+    if (!isCurrent() || shownContext !== context) return;
+    const control = context.restore.control;
+    const selector = !control ? null : control.kind === "view" ? '#view'
+      : control.kind === "range" ? `[data-ranges="${CSS.escape(control.pair)}"] [data-r="${CSS.escape(control.value)}"]`
+      : control.kind === "factor" ? '#beta-factor'
+      : control.kind === "card" ? `[data-card="${CSS.escape(control.value)}"]`
+      : control.kind === "link" ? `a[href="${CSS.escape(control.value)}"]`
+      : control.kind === "lang" ? `[data-lang="${CSS.escape(control.value)}"]`
+      : control.kind === "period" ? `#periodctl [data-days="${CSS.escape(control.value)}"]`
+      : `[data-ctl="${CSS.escape(control.kind)}"] [data-v="${CSS.escape(control.value)}"]`;
+    const target = selector ? document.querySelector(selector) : null;
+    const focusTarget = target || (context.restore.focusOnly ? document.querySelector('#view') : null);
+    if (focusTarget && (!document.activeElement || document.activeElement === document.body)) focusTarget.focus({preventScroll: true});
+    if (context.restore.focusOnly) return;
+    document.querySelectorAll('.table-scroll,.matrix-scroll').forEach((node, index) => {
+      const scroll = context.restore.scrolls[index];
+      if (scroll) { node.scrollLeft = scroll.left; node.scrollTop = scroll.top; }
+    });
+    window.scrollTo({left: context.restore.x, top: context.restore.y, behavior: "instant"});
+  });
+}
+
+function quoteSignature(data) {
+  return JSON.stringify(data?.available ? [data.session_date, data.trading_day,
+    (data.items || []).map(item => [item.pair || item.code || item.label, item.date, item.last, item.prev, item.chg_pct])]
+    : null);
+}
+
+function acceptQuotes(data) {
+  state.quotes = data?.available ? data : null;
+  if (quoteSignature(state.pendingQuotes) === quoteSignature(data)) state.pendingQuotes = null;
+  paintTape(data);
+}
+
+function syncNotices() {
+  const host = document.getElementById("runtime-status");
+  if (!host) return;
+  let notices = host.querySelector("#frontend-notices");
+  if (!notices) {
+    notices = document.createElement("div");
+    notices.id = "frontend-notices";
+    host.append(notices);
+  }
+  const quoteUpdate = build.mode === "live" && state.pendingQuotes && document.querySelector('#view [data-card]');
+  notices.innerHTML = (viewFeedback ? `<div class="view-feedback" role="${viewFeedback.kind === "error" ? "alert" : "status"}">
+    <span>${esc(viewFeedback.text)}</span>${viewFeedback.retry ? `<button class="btn" type="button" data-view-retry${viewFeedback.build ? " data-build-retry" : ""}>${esc(t("view.retry"))}</button>` : ""}</div>` : "")
+    + (quoteUpdate ? `<div class="quote-update" role="status"><span>${esc(t("quotes.available"))}</span>
+      <button class="btn" type="button" data-quotes-refresh>${esc(t("quotes.refresh"))}</button></div>` : "");
+  if (!notices.children.length) { notices.remove(); return; }
+  host.hidden = false;
+  const retry = viewFeedback?.retry;
+  notices.querySelector('[data-view-retry]')?.addEventListener("click", () => retry?.());
+  notices.querySelector('[data-quotes-refresh]')?.addEventListener("click", () => {
+    if (state.pendingQuotes) render({quoteSnapshot: state.pendingQuotes, control: {kind: "view"}});
+  });
+}
+
+function commitView(view, html, context, quotes) {
+  if (shownContext?.route === context.route && !(context.page === "fx" && state.focusPair)) {
+    const active = document.activeElement;
+    const fallback = !active || active === document.body || active.matches('[data-view-retry],[data-quotes-refresh]') ? context.control : null;
+    context.restore = {control: focusedControl() || fallback, x: scrollX, y: scrollY,
+      scrolls: [...view.querySelectorAll('.table-scroll,.matrix-scroll')].map(node => ({left:node.scrollLeft,top:node.scrollTop})),
+      factor: view.querySelector('#beta-factor')?.value};
+  } else if (context.control && !(context.page === "fx" && state.focusPair)) {
+    context.restore = {control: focusedControl() || context.control, focusOnly: true};
+  }
+  view.querySelectorAll('audio').forEach(player => player.pause());
+  disposeCharts();
+  view.innerHTML = html;
+  shownContext = context;
+  document.body.dataset.page = context.page;
+  document.title = context.title;
+  renderNav(context.route);
+  renderFooter();
+  if (quotes !== undefined) acceptQuotes(quotes);
+  else if (state.pendingQuotes && !view.querySelector('[data-card]')) acceptQuotes(state.pendingQuotes);
+  if (viewFeedback?.kind === "loading") viewFeedback = null;
+  view.removeAttribute("aria-busy");
+  syncNotices();
+  restoreControl(context, () => context.generation === renderGeneration);
+  releaseScrollAnchor(() => context.generation === renderGeneration);
 }
 
 function pageHeading({title, meta = "", className = ""}) {
@@ -202,12 +327,23 @@ function channels(eventKind) {
 /* ------------------------------------------------------------------ ticker tape */
 async function renderTape() {
   const request = ++tapeRequest;
-  const tape = document.getElementById("tape");
-  const session = document.getElementById("session");
   let data;
   try { data = await api("/market/ticker"); } catch (e) { data = null; }
   if (request !== tapeRequest) return;
-  state.quotes = data && data.available ? data : null;
+  if (build.mode === "live" && data?.available && document.querySelector('#view [data-card]')
+      && quoteSignature(data) !== quoteSignature(state.quotes)) {
+    state.pendingQuotes = data;
+    syncNotices();
+    return;
+  }
+  if (data?.available) { state.pendingQuotes = null; acceptQuotes(data); }
+  else if (!state.quotes) paintTape(null);
+  syncNotices();
+}
+
+function paintTape(data) {
+  const tape = document.getElementById("tape");
+  const session = document.getElementById("session");
 
   if (data && data.available && data.session_date) {
     session.innerHTML = `<i></i>${esc(t("tape.session"))} ${
@@ -368,7 +504,7 @@ function renderThemeButton() {
   btn.textContent = dark ? "☀" : "☾";
   btn.title = dark ? t("theme.light") : t("theme.dark");
   btn.setAttribute("aria-label", btn.title);
-  btn.onclick = () => { applyTheme(dark ? "light" : "dark"); renderThemeButton(); renderTape(); render(); };
+  btn.onclick = () => { applyTheme(dark ? "light" : "dark"); renderThemeButton(); paintTape(state.quotes); render(); };
 }
 
 /* ------------------------------------------------------------------ top bar */
@@ -388,7 +524,7 @@ function renderNav(route) {
   seg.innerHTML = [["en", "EN"], ["zh", "中"]].map(([v, n]) =>
     `<button type="button" data-lang="${v}" aria-pressed="${v === lang}">${n}</button>`).join("");
   seg.querySelectorAll("button").forEach((b) => {
-    b.onclick = () => { setLang(b.dataset.lang); renderThemeButton(); render(); };
+    b.onclick = () => { setLang(b.dataset.lang); render({control: {kind: "lang", value: b.dataset.lang}}); };
   });
   renderThemeButton();
 }
@@ -403,7 +539,7 @@ function renderFooter() {
     esc(t("foot.methodology"))}</a></p>`;
 }
 
-function controls() {
+function controls(selection = state) {
   const meta = state.meta || {};
   const models = (meta.models || MODEL_ORDER).slice()
     .sort((a, b) => MODEL_ORDER.indexOf(a) - MODEL_ORDER.indexOf(b));
@@ -412,8 +548,8 @@ function controls() {
     opts.map((v) => `<button type="button" data-v="${v}" aria-pressed="${
       String(v) === String(current)}">${esc(String(v).toUpperCase())}</button>`).join("") + "</div>";
   return `<div class="ctlrow">
-    <div class="ctlgroup"><span class="lbl">${esc(t("ctl.model"))}</span>${seg("model", models, state.model)}</div>
-    <div class="ctlgroup"><span class="lbl">${esc(t("ctl.window"))}</span>${seg("window", windows, state.window)}</div>
+    <div class="ctlgroup"><span class="lbl">${esc(t("ctl.model"))}</span>${seg("model", models, selection.model)}</div>
+    <div class="ctlgroup"><span class="lbl">${esc(t("ctl.window"))}</span>${seg("window", windows, selection.window)}</div>
   </div>`;
 }
 
@@ -426,7 +562,7 @@ function bindControls(root) {
         const v = b.dataset.v;
         if (name === "model") { state.model = v; localStorage.setItem("fxdash.model", v); }
         else { state.window = Number(v); localStorage.setItem("fxdash.window", v); }
-        render();
+        render({control: {kind: name, value: v}});
       };
     });
   });
@@ -594,7 +730,7 @@ function headlineExpandHtml(h, key) {
   </div>`;
 }
 
-async function pageNews(view, isCurrent) {
+async function pageNews(view, isCurrent, context) {
   // The pipeline heartbeat for the health panel rides on the same overview request
   // the FX page makes (canonical window and model), so a static build has the file
   const win = (state.meta && state.meta.default_window) || 126;
@@ -702,7 +838,7 @@ async function pageNews(view, isCurrent) {
       <div class="mini__basis"><span data-mini-basis>${esc(t("mini.pending"))}</span><span class="mini__date" data-mini-date hidden></span></div>
     </button>`).join("");
 
-  view.innerHTML = `
+  commitView(view, `
     ${pageHeading({title: t("news.page.title"), className: "headrow news-header",
       meta: marketStamp(news.as_of) + subscriptionHtml(news.subscription)})}
     <div class="news">
@@ -759,7 +895,7 @@ async function pageNews(view, isCurrent) {
         </div></details>
         <details class="news-guide"><summary>${esc(t('news.systemdetails'))}</summary>${healthPanel()}</details>
       </aside>
-    </div>`;
+    </div>`, context);
 
   bindBriefingBoard(view, news.briefing, news.briefing_archive, build);
   bindBriefingOperations(view, operations);
@@ -926,10 +1062,12 @@ function robustnessChips(st) {
 }
 
 function meterOf(row) {
-  const s = Math.abs(row?.systematic || 0), e = Math.abs(row?.exogenous || 0),
-    r = Math.abs(row?.residual || 0);
-  const total = s + e + r;
-  return total ? [s / total, e / total, r / total] : [null, null, null];
+  const values = [row?.systematic, row?.exogenous, row?.residual];
+  if (!values.every(Number.isFinite)) return {state: "unavailable", shares: [null, null, null]};
+  const sizes = values.map(Math.abs), total = sizes.reduce((sum, value) => sum + value, 0);
+  if (!Number.isFinite(total)) return {state: "unavailable", shares: [null, null, null]};
+  return total > 0 ? {state: "available", shares: sizes.map(value => value / total)}
+    : {state: "empty", shares: [null, null, null]};
 }
 
 function leadingFactorsHtml(values, scale = 1) {
@@ -941,9 +1079,9 @@ function leadingFactorsHtml(values, scale = 1) {
     }).join("") : `<span>${esc(t("drivers.empty"))}</span>`}</div>`;
 }
 
-function cardHtml(pair, row, counts, robust) {
-  const q = (state.quotes && state.quotes.items.find((x) => x.pair === pair)) || null;
-  const [ms, me, mr] = meterOf(row);
+function cardHtml(pair, row, counts, robust, quotes = state.quotes) {
+  const q = (quotes && quotes.items.find((x) => x.pair === pair)) || null;
+  const meter = meterOf(row), [ms, me, mr] = meter.shares;
   const open = state.openPair === pair;
   const n = counts[pair] || 0;
   const range = state.ranges[pair] || "6m";
@@ -976,15 +1114,13 @@ function cardHtml(pair, row, counts, robust) {
       `<button type="button" data-r="${r}" aria-pressed="${r === range}">${
         esc(t("range." + r))}</button>`).join("")}</div>
     <div class="col gap12 card__attribution">
-      <div class="meter">
-        <i style="width:${(ms || 0) * 100}%;background:var(--sys)"></i>
-        <i style="width:${(me || 0) * 100}%;background:var(--exo)"></i>
-        <i style="flex:1;background:var(--res)"></i>
-      </div>
+      <div class="meter" data-meter-state="${meter.state}">${["systematic", "exogenous", "residual"].map((group, index) =>
+        meter.shares[index] > 0 ? `<i class="meter__segment meter__segment--${group}" style="flex-grow:${meter.shares[index]};flex-basis:0"></i>` : "").join("")}</div>
+      ${meter.state !== "available" ? `<p class="meter-note">${esc(t("meter." + meter.state))}</p>` : ""}
       <div class="split">
-        <div><i style="background:var(--sys)"></i>${esc(t("sys"))} <b>${fmtBp1(row?.systematic == null ? null : row.systematic * 1e4)} bp</b> <small>(${fmtShare(ms)})</small></div>
-        <div><i style="background:var(--exo)"></i>${esc(t("exo"))} <b>${fmtBp1(row?.exogenous == null ? null : row.exogenous * 1e4)} bp</b> <small>(${fmtShare(me)})</small></div>
-        <div><i style="background:var(--res)"></i>${esc(t("res"))} <b>${fmtBp1(row?.residual == null ? null : row.residual * 1e4)} bp</b> <small>(${fmtShare(mr)})</small></div>
+        <div><i class="split__swatch--systematic"></i>${esc(t("sys"))} <b>${fmtBp1(row?.systematic == null ? null : row.systematic * 1e4)} bp</b> <small>(${fmtShare(ms)})</small></div>
+        <div><i class="split__swatch--exogenous"></i>${esc(t("exo"))} <b>${fmtBp1(row?.exogenous == null ? null : row.exogenous * 1e4)} bp</b> <small>(${fmtShare(me)})</small></div>
+        <div><i class="split__swatch--residual"></i>${esc(t("res"))} <b>${fmtBp1(row?.residual == null ? null : row.residual * 1e4)} bp</b> <small>(${fmtShare(mr)})</small></div>
       </div>
       <div class="hint nowrap card__fit">${esc(t("fx.fit"))} ${row && row.r2_full != null ? row.r2_full.toFixed(3) : "n/a"}</div>
     </div>
@@ -1066,7 +1202,7 @@ function repositionPairPanel() {
   }
 }
 
-async function pageFX(view, isCurrent) {
+async function pageFX(view, isCurrent, context) {
   // The FX page is pinned to the canonical basis OLS@126 (2026-09-02 user ruling:
   // the switches stay on Attribution only)
   const win = (state.meta && state.meta.default_window) || 126;
@@ -1082,17 +1218,23 @@ async function pageFX(view, isCurrent) {
   const pairs = PAIR_ORDER.filter((p) => byPair[p]).length
     ? PAIR_ORDER.filter((p) => byPair[p]) : overview.pairs.map((p) => p.pair);
 
-  let feed = null;
-  if (state.openPair) {
-    try { feed = await api(`/pairs/${state.openPair}/news`); }
-    catch (e) { feed = { items: [] }; }
-  }
+  let feed = null, feedPair;
+  do {
+    feedPair = state.openPair;
+    feed = null;
+    if (feedPair) {
+      try { feed = await api(`/pairs/${feedPair}/news`); }
+      catch (e) { feed = { items: [] }; }
+    }
+    if (!isCurrent()) return;
+  } while (feedPair !== state.openPair);
   if (!isCurrent()) return;
 
   const robust = overview.robustness || {};
-  const grid = pairs.map(p => cardHtml(p, byPair[p], counts, robust[p]));
+  const quotes = context.quoteSnapshot;
+  const grid = pairs.map(p => cardHtml(p, byPair[p], counts, robust[p], quotes));
 
-  view.innerHTML = `
+  commitView(view, `
     ${pageHeading({title: t("page.fx.title"),
       meta: marketStamp(overview.as_of) + `<p class="page-heading__basis">${esc(t("page.fx.basis", {model: model.toUpperCase(), window: win}))}</p>`})}
     <div class="col gap32">
@@ -1110,7 +1252,7 @@ async function pageFX(view, isCurrent) {
           <i>?</i>${esc(t("legend.open"))}</button>
         ${state.helpOpen ? helpGridHtml() : ""}
       </div>
-    </div>`;
+    </div>`, context, quotes);
 
   // Expand, legend and Explain all add and remove DOM in place, never a full
   // render(): a full repaint flashes Loading and disposes and rebuilds all six
@@ -1129,7 +1271,7 @@ async function pageFX(view, isCurrent) {
     if (!pair) return;
     let f;
     try { f = await api(`/pairs/${pair}/news`); } catch (e) { f = { items: [] }; }
-    if (!isCurrent() || request !== panelRequest || state.openPair !== pair) return;
+    if (shownContext !== context || request !== panelRequest || state.openPair !== pair) return;
     const anchor = pairRowAnchor(view, pair);
     if (!anchor) return;
     anchor.insertAdjacentHTML("afterend", pairNewsHtml(pair, f));
@@ -1253,8 +1395,8 @@ function divergingRow(row, order, half) {
   return `<div class="diverge"><div class="diverge__zero"></div>${html}</div>`;
 }
 
-async function pageAttribution(view, isCurrent) {
-  const qs = `?window=${state.window}&model=${state.model}${state.period === 5 ? "" : "&days=" + state.period}`;
+async function pageAttribution(view, isCurrent, context) {
+  const qs = `?window=${context.window}&model=${context.model}${context.period === 5 ? "" : "&days=" + context.period}`;
   const data = await api("/attribution/weekly" + qs);
   if (!isCurrent()) return;
   const order = data.bucket_order;
@@ -1324,15 +1466,15 @@ async function pageAttribution(view, isCurrent) {
     ${Object.entries(g.residuals || {}).map(([p,r])=>`<p class="hint">${esc(label(p))} ${esc(t("attr.dayresidual"))} ${fmtBp1(r.residual_bp)} bp · z ${r.residual_z == null ? 'n/a' : r.residual_z.toFixed(2)}</p>`).join('')}
     ${g.rows.map(r=>`<a href="${esc(/^https?:\/\//i.test(r.url) ? r.url : '#')}" target="_blank" rel="noopener">${esc(r.title)}<small>${esc(r.source || '')} · ${(r.cited_pairs || []).map(p=>esc(label(p))).join(', ')} ↗</small></a>`).join('')}</details>`).join('');
 
-  view.innerHTML = `<article class="attribution-page">
+  commitView(view, `<article class="attribution-page">
     ${pageHeading({title: t("attr.title"), className: "attr-intro",
       meta: `<div class="dateline">${esc(t("attr.period", {
         start: rows[0] ? rows[0].start : "", end: rows[0] ? rows[0].end : "" }))} <span>${esc(t("return.log"))} bp</span></div>`})}
     <div class="col gap24">
       <div class="ctlrow"><span class="lbl">${esc(t("attr.horizon"))}</span>
-        <div class="ctl" id="periodctl">${[1,5,21].map(d => `<button type="button" data-days="${d}" aria-pressed="${state.period === d}">${esc(t("period."+d))}</button>`).join("")}</div>
+        <div class="ctl" id="periodctl">${[1,5,21].map(d => `<button type="button" data-days="${d}" aria-pressed="${context.period === d}">${esc(t("period."+d))}</button>`).join("")}</div>
       </div>
-      <div class="ctlrow attr-options">${controls()}
+      <div class="ctlrow attr-options">${controls(context)}
         <a class="method-link" href="#/methodology">${esc(t("attr.methodology"))} ↗</a>
       </div>
       <div class="attr-notes"><details><summary>${esc(t("attr.reading"))}</summary>
@@ -1360,11 +1502,11 @@ async function pageAttribution(view, isCurrent) {
         <div class="matrix-mobile">${matrixCards || `<p class="empty">${esc(t("attr.nomatrix"))}</p>`}</div>
       </div>
       ${structureShell()}
-    </div></article>`;
+    </div></article>`, context);
   bindControls(view);
-  view.querySelectorAll("#periodctl button").forEach(b=>b.onclick=()=>{state.period=Number(b.dataset.days);render();});
+  view.querySelectorAll("#periodctl button").forEach(b=>b.onclick=()=>{state.period=Number(b.dataset.days);render({control:{kind:"period",value:b.dataset.days}});});
   const structure = view.querySelector("#market-structure");
-  const selectedWindow = state.window;
+  const selectedWindow = context.window;
   let structureData = null, loadingStructure = false;
   structure.addEventListener("toggle", async () => {
     if (!structure.open || loadingStructure) return;
@@ -1385,16 +1527,18 @@ async function pageAttribution(view, isCurrent) {
   });
 }
 
-async function pageResearch(view, pair, isCurrent) {
+async function pageResearch(view, pair, isCurrent, context) {
   if (!state.meta.pairs.includes(pair)) throw new Error("Unknown currency pair");
   const [data, comparison] = await Promise.all([
-    api(`/pairs/${pair}/series?window=${state.window}&model=${state.model}&observations=252`),
-    api(`/research/comparison?window=${state.window}`).catch(() => null),
+    api(`/pairs/${pair}/series?window=${context.window}&model=${context.model}&observations=252`),
+    api(`/research/comparison?window=${context.window}`).catch(() => null),
   ]);
   if (!isCurrent()) return;
-  view.innerHTML = researchHtml(data, label(pair), controls(), comparison);
+  commitView(view, researchHtml(data, label(pair), controls(context), comparison), context);
   bindControls(view);
   if (!data.dates.length) return;
+  const factorSelect = view.querySelector('#beta-factor');
+  if ([...factorSelect.options].some(option => option.value === context.restore?.factor)) factorSelect.value = context.restore.factor;
   const draw = () => {
     const factor = view.querySelector("#beta-factor").value;
     const options = researchOptions(data, factor);
@@ -1428,13 +1572,13 @@ function ensureMathJax() {
   return mathjaxLoading;
 }
 
-async function pageMethodology(view, isCurrent) {
-  view.innerHTML = methodologyHtml();
+async function pageMethodology(view, isCurrent, context) {
+  commitView(view, methodologyHtml(), context);
   try {
     await ensureMathJax();
-    if (!isCurrent()) return;
+    if (shownContext !== context) return;
     await window.MathJax.startup.promise;
-    if (!isCurrent()) return;
+    if (shownContext !== context) return;
     await window.MathJax.typesetPromise([view]);
   } catch (e) {
     // If MathJax fails, keep the raw TeX text: readable, just not pretty. A
@@ -1443,27 +1587,37 @@ async function pageMethodology(view, isCurrent) {
 }
 
 /* ------------------------------------------------------------------ router */
-async function render() {
+async function render(options = {}) {
   const generation = ++renderGeneration;
   const isCurrent = () => generation === renderGeneration;
   const view = document.getElementById("view");
-  view.querySelectorAll('audio').forEach(player=>player.pause());
   const route = (location.hash || "#/fx").slice(1);
   const page = route.startsWith("/news") ? "news" : route.startsWith("/attribution") ? "attribution"
     : route.startsWith("/research/") ? "research" : route.startsWith("/methodology") ? "methodology" : "fx";
-  document.body.dataset.page = page;
   const pageTitle = page === "fx" ? t("page.fx.title") : page === "news" ? t("news.page.title")
     : page === "attribution" ? t("attr.title") : page === "methodology" ? t("page.methodology.title") : label(route.split("/")[2]);
-  document.title = `${pageTitle} | FX Dashboard`;
-  disposeCharts();
-  renderNav(route);
-  renderFooter();
-  view.innerHTML = `<div class="empty loading-view" role="status" aria-busy="true">
-    <p class="loading-view__label">${esc(t("loading"))}</p>
-    <div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div></div>`;
-  await renderRuntime();
-  if (!isCurrent()) return;
+  const context = {generation, route, page, title: `${pageTitle} | FX Dashboard`, model:state.model, window:state.window,
+    period:state.period, control:options.control, quoteSnapshot:options.quoteSnapshot || state.quotes,
+    acceptingQuotes:!!options.quoteSnapshot};
+  const loadingText = () => t("view.updating") + (["attribution", "research"].includes(page)
+    ? ` ${context.model.toUpperCase()} / ${context.window}${page === "attribution" ? " / " + t("period." + context.period) : ""}.` : "")
+    + (shownContext ? " " + t("view.previous") : "");
+  holdScrollAnchor();
+  view.setAttribute("aria-busy", "true");
+  if (!shownContext) {
+    document.body.dataset.page = page;
+    document.title = context.title;
+    renderNav(route);
+    renderFooter();
+    view.innerHTML = `<div class="empty loading-view" role="status" aria-busy="true">
+      <p class="loading-view__label">${esc(t("loading"))}</p>
+      <div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div></div>`;
+  }
+  viewFeedback = shownContext ? {kind: "loading", text: loadingText()} : null;
+  syncNotices();
   try {
+    await renderRuntime();
+    if (!isCurrent()) return;
     if (!state.meta) {
       const meta = await api("/meta");
       if (!isCurrent()) return;
@@ -1471,22 +1625,43 @@ async function render() {
     }
     await refreshResolvedHeader();
     if (!isCurrent()) return;
+    if (!context.acceptingQuotes && !view.querySelector('[data-card]')) context.quoteSnapshot = state.quotes;
     if (state.meta.windows && !state.meta.windows.includes(state.window)) {
       state.window = state.meta.default_window || state.meta.windows[0];
     }
     if (state.meta.models && !state.meta.models.includes(state.model)) {
       state.model = state.meta.default_model || state.meta.models[0];
     }
-    if (route.startsWith("/news")) await pageNews(view, isCurrent);
-    else if (route.startsWith("/attribution")) await pageAttribution(view, isCurrent);
-    else if (route.startsWith("/methodology")) await pageMethodology(view, isCurrent);
-    else if (route.startsWith("/research/")) await pageResearch(view, route.split("/")[2], isCurrent);
-    else await pageFX(view, isCurrent);
+    context.model = state.model;
+    context.window = state.window;
+    if (viewFeedback) { viewFeedback.text = loadingText(); syncNotices(); }
+    if (route.startsWith("/news")) await pageNews(view, isCurrent, context);
+    else if (route.startsWith("/attribution")) await pageAttribution(view, isCurrent, context);
+    else if (route.startsWith("/methodology")) await pageMethodology(view, isCurrent, context);
+    else if (route.startsWith("/research/")) await pageResearch(view, route.split("/")[2], isCurrent, context);
+    else await pageFX(view, isCurrent, context);
+    if (!isCurrent()) return;
+    viewFeedback = null;
+    view.removeAttribute("aria-busy");
+    syncNotices();
+    releaseScrollAnchor(isCurrent);
   } catch (err) {
     if (!isCurrent()) return;
-    view.innerHTML = `<p class="empty">${esc(t("error"))} <code>${esc(err.message)}</code></p>`
-      + (err.retryBuild ? `<button type="button" data-build-retry>${getLang() === "zh" ? "重试" : "Retry"}</button>` : "");
-    view.querySelector('[data-build-retry]')?.addEventListener('click', render);
+    const retryable = err.retryBuild || err.retryable !== false;
+    const text = t(err.retryBuild ? "view.build.failed" : retryable ? "view.request.failed" : "view.selection.failed");
+    const retry = retryable ? () => {
+      if (isCurrent()) render({control: context.control || {kind: "view"}, quoteSnapshot: context.acceptingQuotes ? state.pendingQuotes || context.quoteSnapshot : undefined});
+    } : null;
+    if (shownContext) {
+      viewFeedback = {kind: "error", text: text + " " + t("view.previous"), retry, build: !!err.retryBuild};
+    } else {
+      viewFeedback = null;
+      view.innerHTML = `<div class="empty view-error" role="alert"><p>${esc(text)}</p>${retry ? `<button class="btn" type="button" data-view-retry${err.retryBuild ? " data-build-retry" : ""}>${esc(t("view.retry"))}</button>` : ""}</div>`;
+      view.querySelector('[data-view-retry]')?.addEventListener("click", retry);
+    }
+    view.removeAttribute("aria-busy");
+    syncNotices();
+    releaseScrollAnchor(isCurrent);
   }
 }
 
@@ -1510,6 +1685,7 @@ async function renderRuntime() {
   el.innerHTML=runtimeHtml(state.runtime,build);
   el.querySelector('details').open=!!open;
   el.hidden=false;
+  syncNotices();
 }
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
